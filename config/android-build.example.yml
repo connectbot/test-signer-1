@@ -1,0 +1,43 @@
+# Copy into the allowed repository as .github/workflows/android-build.yml.
+# Adjust Gradle output paths and build commands for that repository.
+name: Android unsigned build
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Provision the project's pinned JDK/SDK/Gradle environment here.
+      # Build without upload/APK/transparency signing keys in Actions.
+      # Disable bundle archiving or provision the matching archive_resource
+      # in the signer configuration before adding code transparency.
+      - run: ./gradlew :app:assembleRelease :app:bundleRelease
+      - run: |
+          mkdir unsigned
+          cp app/build/outputs/apk/release/app-release-unsigned.apk unsigned/app.apk
+          cp app/build/outputs/bundle/release/app-release.aab unsigned/app.aab
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: unsigned/app.apk
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661 # v3
+        with:
+          subject-path: unsigned/app.aab
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-apk
+          path: unsigned/app.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-aab
+          path: unsigned/app.aab
+          if-no-files-found: error

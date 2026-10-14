@@ -1,0 +1,92 @@
+[package]
+name = "android-signer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+
+[workspace]
+exclude = ["vendor/hyper-util", "vendor/socket2"]
+
+[features]
+default = []
+admin = ["dep:clap"]
+collector = ["dep:rusqlite"]
+
+[[bin]]
+name = "signer"
+path = "src/bin/signer.rs"
+[[bin]]
+name = "signer-admin"
+path = "src/bin/admin.rs"
+required-features = ["admin"]
+[[bin]]
+name = "audit-collector"
+path = "src/bin/collector.rs"
+required-features = ["collector"]
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+base64 = "0.22"
+bytes = "1"
+cms = "0.2"
+clap = { version = "4", features = ["derive"], optional = true }
+der = { version = "0.7", features = ["alloc", "pem"] }
+ed25519-dalek = "2"
+hex = "0.4"
+hmac = "0.12"
+http = "1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "=0.1.14", features = ["server", "tokio", "service"] }
+ml-dsa = { version = "=0.1.1", features = ["zeroize"] }
+p256 = { version = "0.13", features = ["ecdsa"] }
+p384 = { version = "0.13", features = ["ecdsa"] }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-no-provider"] }
+rsa = { version = "0.9", features = ["sha2"] }
+rusqlite = { version = "0.37", features = ["bundled"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }
+rustls-pemfile = "2"
+rustls-rustcrypto = "=0.0.2-alpha"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = { version = "0.10", features = ["oid"] }
+sigstore-crypto = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }
+sigstore-types = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }
+sigstore-trust-root = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }
+sigstore-verify = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }
+subtle = "2"
+tokio = { version = "=1.45.0", features = ["rt", "macros", "net", "time", "sync", "io-util"] }
+tokio-util = { version = "=0.7.15", default-features = false }
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+x509-cert = { version = "0.2", features = ["pem"] }
+zeroize = { version = "1", features = ["derive"] }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "hermit")'.dependencies]
+hermit = { git = "https://github.com/hermit-os/hermit-rs", tag = "hermit-0.13.0", default-features = false, features = ["acpi", "pci", "tcp", "udp", "dns", "dhcpv4", "virtio-net", "virtio-fs"] }
+
+[dev-dependencies]
+tempfile = "3"
+rcgen = { version = "0.13", default-features = false, features = ["pem", "crypto", "ring"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+debug = 0
+incremental = false
+
+[profile.test]
+debug = 0
+incremental = false
+
+[patch.crates-io]
+tokio = { git = "https://github.com/hermit-os/tokio", rev = "0e86dc7f13d850f579049761dc2d28eebcc2bf1c" }
+socket2 = { path = "vendor/socket2" }
+hyper-util = { path = "vendor/hyper-util" }

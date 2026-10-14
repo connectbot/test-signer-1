@@ -1,0 +1,5 @@
+/target/
+/dist/
+/secrets/
+*.sqlite*
+__pycache__/

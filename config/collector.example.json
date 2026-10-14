@@ -1,0 +1,7 @@
+{
+  "listen": "0.0.0.0:8443",
+  "tls_certificate": "/etc/android-audit/tls.pem",
+  "tls_private_key": "/etc/android-audit/tls.pk8",
+  "token_file": "/etc/android-audit/token",
+  "database": "/var/lib/android-audit/audit.sqlite"
+}

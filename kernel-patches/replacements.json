@@ -1,0 +1,48 @@
+[
+  {
+    "file": "src/syscalls/entropy.rs",
+    "before": "\tlet ret = entropy::read(buf, flags);\n\tif ret < 0 {\n\t\twarn!(\"Unable to read entropy! Fallback to a naive implementation!\");\n\t\tfor byte in &mut *buf {\n\t\t\t*byte = (generate_park_miller_lehmer_random_number() & 0xff)\n\t\t\t\t.try_into()\n\t\t\t\t.unwrap();\n\t\t}\n\t\tbuf.len().try_into().unwrap()\n\t} else {\n\t\tret\n\t}",
+    "after": "\t// ANDROID_SIGNER_STRICT_ENTROPY: fail stop, never use rand().\n\tlet result = entropy::read(buf, flags);\n\tassert!(result >= 0, \"Secure entropy unavailable: RDSEED is required\");\n\tresult"
+  },
+  {
+    "file": "src/fd/socket/tcp.rs",
+    "before": "\t\tlet _ = block_on(self.close(), None);",
+    "after": "\t\t// Nonblocking descriptors must not wait for a peer during Drop. The\n\t\t// application has completed its writes; abort releases an unresponsive\n\t\t// peer without blocking the single-threaded async executor.\n\t\tif self.is_nonblocking {\n\t\t\tlet mut guard = NIC.lock();\n\t\t\tlet nic = guard.as_nic_mut().unwrap();\n\t\t\tfor h in self.handle.iter() {\n\t\t\t\tnic.get_mut_socket::<tcp::Socket<'_>>(*h).abort();\n\t\t\t}\n\t\t} else {\n\t\t\tlet _ = block_on(self.close(), None);\n\t\t}"
+  },
+  {
+    "file": "src/syscalls/socket/mod.rs",
+    "before": "block_on(async { v.write().await.connect(endpoint).await }, None)",
+    "after": "block_on(async { v.write().await.connect(endpoint).await }, Some(core::time::Duration::from_secs(15)))"
+  },
+  {
+    "file": "src/executor/mod.rs",
+    "before": "\t\tlet _ = futex_wait_and_set(&self.futex, 0, timeout, Flags::RELATIVE, 0);",
+    "after": "\t\t// block_on supplies a Unix-epoch deadline; futex RELATIVE needs a duration.\n\t\tlet remaining = timeout.map(|deadline| deadline.saturating_sub(crate::arch::kernel::systemtime::now_micros()));\n\t\tlet _ = futex_wait_and_set(&self.futex, 0, remaining, Flags::RELATIVE, 0);"
+  },
+  {
+    "file": "src/scheduler/task/mod.rs",
+    "before": "pub fn custom_wakeup(&mut self, task: TaskHandle) -> Rc<RefCell<Task>> {",
+    "after": "pub fn custom_wakeup(&mut self, task: TaskHandle) -> Option<Rc<RefCell<Task>>> {"
+  },
+  {
+    "file": "src/scheduler/task/mod.rs",
+    "before": "return task_ref;",
+    "after": "return Some(task_ref);"
+  },
+  {
+    "file": "src/scheduler/task/mod.rs",
+    "before": "\t\tunreachable!();\n\t}\n\n\t/// Wakes up all tasks",
+    "after": "\t\t// A timer may already have moved this task into the ready queue while\n\t\t// its futex registration was still waiting to be removed. Do not queue\n\t\t// it twice when a concurrent wake notification arrives.\n\t\tNone\n\t}\n\n\t/// Wakes up all tasks"
+  },
+  {
+    "file": "src/scheduler/mod.rs",
+    "before": "\t\t\tlet task = self.blocked_tasks.custom_wakeup(task);\n\t\t\tself.ready_queue.push(task);",
+    "after": "\t\t\tif let Some(task) = self.blocked_tasks.custom_wakeup(task) {\n\t\t\t\tself.ready_queue.push(task);\n\t\t\t}",
+    "expected_count": 2
+  },
+  {
+    "file": "src/scheduler/mod.rs",
+    "before": "\t\t\t\tlet task = self.blocked_tasks.custom_wakeup(task);\n\t\t\t\tself.ready_queue.push(task);",
+    "after": "\t\t\t\tif let Some(task) = self.blocked_tasks.custom_wakeup(task) {\n\t\t\t\t\tself.ready_queue.push(task);\n\t\t\t\t}"
+  }
+]

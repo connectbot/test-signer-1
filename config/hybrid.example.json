@@ -1,0 +1,10 @@
+{
+  "classical_key": "hybrid-rsa-b",
+  "pqc_key": "hybrid-pqc-b",
+  "classical_lineage": "/root/hybrid-b/rsa-lineage.bin",
+  "classical_lineage_sha256": "REPLACE_WITH_SHA256",
+  "pqc_lineage": "/root/hybrid-b/pqc-lineage.bin",
+  "pqc_lineage_sha256": "REPLACE_WITH_SHA256",
+  "effective_lineage": "/root/hybrid-b/effective-lineage.bin",
+  "effective_lineage_sha256": "REPLACE_WITH_SHA256"
+}

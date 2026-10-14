@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-14",
+  "guest": {
+    "target": "x86_64-unknown-hermit",
+    "bytes": 7402136,
+    "sha256": "6c0836bf0e5059ec6fe8c7cd1a8fe92f7e719f4f564701dc9bae903294158adc"
+  },
+  "checks": {
+    "pinned_build_helper": "passed",
+    "clippy_all_features_all_targets": "passed with -D warnings on host",
+    "format": "passed",
+    "workflow_actionlint": "passed",
+    "host_signature_reference_tests": "6 passed; Android API24,28,32,33,36,37 and bundletool/jarsigner",
+    "sigstore_crypto_fixtures": "1 passed; see tests/fixtures/README.md for scope",
+    "collector_and_policy_tests": "3 passed",
+    "missing_rdseed_boot": "halts before key loading",
+    "qemu_service_smoke": "passed; TLS, HMAC, read-only secrets, VirtIO network, durable policy activation, collector-outage 503"
+  },
+  "not_validated": [
+    "live GitHub artifact-to-draft-release flow",
+    "Play Console acceptance",
+    "on-device install/upgrade/downgrade",
+    "Proxmox cluster deployment"
+  ],
+  "unsupported": [
+    "microvm machine with the current image"
+  ]
+}

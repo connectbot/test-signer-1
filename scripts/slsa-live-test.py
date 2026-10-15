@@ -45,7 +45,7 @@ def main():
         bundle.write_bytes(files['final.sigstore.json'])
         final_predicate = r.load(files['predicate.json'])
         r.require(final_predicate['buildDefinition']['buildType'] == r.BUILD_TYPE, 'wrong final build type')
-        expected_inputs = {'sourceRun': f'https://github.com/{repo}/actions/runs/{args.source_run}/attempts/{args.source_attempt}', 'profiles': sorted(policy['profiles'])}
+        expected_inputs = {'workflow': {'repository': f'https://github.com/{repo}', 'ref': 'refs/heads/main', 'path': '.github/workflows/signed-release.yml'}, 'inputs': {'source_run': str(args.source_run), 'source_attempt': str(args.source_attempt)}}
         r.require(final_predicate['buildDefinition']['externalParameters'] == expected_inputs, 'final external parameters differ')
         for profile in sorted(policy['profiles']):
             local = root / profile

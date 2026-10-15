@@ -18,7 +18,7 @@ import zipfile
 
 SLSA = "https://slsa.dev/provenance/v1"
 PAYLOAD_TYPE = "application/vnd.in-toto+json"
-BUILD_TYPE = "urn:android-signer:buildtype:verified-signing:v1"
+BUILD_TYPE = "https://actions.github.io/buildtypes/workflow/v1"
 MAX_BYTES = 128 * 1024 * 1024
 
 
@@ -353,7 +353,21 @@ def prepare_tools(tool_dir):
 
 
 def validate_finalizer_context(metadata):
-    require(os.environ["GITHUB_EVENT_NAME"] in ("workflow_run", "workflow_dispatch") and os.environ["GITHUB_REF"] == f"refs/heads/{metadata['default_branch']}", "finalizer must run from the default branch")
+    require(os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and os.environ["GITHUB_REF"] == f"refs/heads/{metadata['default_branch']}", "finalizer must be dispatched from the default branch")
+
+
+def final_predicate(policy, source_run_id, source_attempt, metadata, summaries, dependencies):
+    validate_finalizer_context(metadata)
+    inputs = {"source_run": str(source_run_id), "source_attempt": str(source_attempt)}
+    event = load(Path(os.environ["GITHUB_EVENT_PATH"]).read_bytes())
+    require(event.get("inputs") == inputs, "finalizer inputs differ from control-plane event")
+    require(os.environ.get("RUNNER_ENVIRONMENT") == "github-hosted", "finalizer must use a hosted runner")
+    finalizer = os.environ["GITHUB_WORKFLOW_REF"]
+    require(finalizer == f"{policy['repository']}/.github/workflows/signed-release.yml@{os.environ['GITHUB_REF']}", "unexpected finalizer caller")
+    repository_uri = f"https://github.com/{policy['repository']}"
+    dependencies = [*dependencies, {"uri": f"git+{repository_uri}@{os.environ['GITHUB_REF']}", "digest": {"gitCommit": os.environ["GITHUB_SHA"]}}]
+    github = {"event_name": "workflow_dispatch", "repository_id": str(metadata["id"]), "repository_owner_id": str(metadata["owner"]["id"]), "runner_environment": "github-hosted"}
+    return {"buildDefinition": {"buildType": BUILD_TYPE, "externalParameters": {"workflow": {"repository": repository_uri, "ref": os.environ["GITHUB_REF"], "path": ".github/workflows/signed-release.yml"}, "inputs": inputs}, "internalParameters": {"github": github, "finalizerWorkflow": finalizer, "finalizerCommit": os.environ["GITHUB_SHA"], "signingTransactions": summaries}, "resolvedDependencies": dependencies}, "runDetails": {"builder": {"id": f"{repository_uri}/.github/workflows/release-attest.yml@{os.environ['GITHUB_REF']}"}, "metadata": {"invocationId": f"{repository_uri}/actions/runs/{os.environ['GITHUB_RUN_ID']}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}"}}}
 
 
 def prepare(policy_path, source_run_id, source_attempt, out, tool_dir):
@@ -389,12 +403,7 @@ def prepare(policy_path, source_run_id, source_attempt, out, tool_dir):
         dependencies.append({"uri": f"urn:android-signer:receipt:{profile}", "digest": {"sha256": digest(files['signing-receipt.dsse.json'])}})
         summaries[profile] = {"job_id": receipt["job"]["id"], "receipt_sha256": digest(files["signing-receipt.dsse.json"]), "keys": receipt["keys"], "lineage": receipt["lineage"]}
     dependencies.extend([{"uri": f"git+https://github.com/{policy['repository']}", "digest": {"gitCommit": source_run["head_sha"]}}, {"uri": "urn:android-signer:policy", "digest": {"sha256": policy["policy_hash"]}}, {"uri": "urn:android-signer:implementation", "digest": {"gitCommit": policy["signer_revision"]}}])
-    # workflow_run's SHA identifies the finalizer, not the Android source build.
-    finalizer = os.environ["GITHUB_WORKFLOW_REF"]
-    require(finalizer.split("@", 1)[0] == f"{policy['repository']}/.github/workflows/signed-release.yml", "unexpected finalizer caller")
-    builder_id = f"https://github.com/{policy['repository']}/.github/workflows/release-attest.yml@{os.environ['GITHUB_REF']}"
-    invocation = f"https://github.com/{policy['repository']}/actions/runs/{os.environ['GITHUB_RUN_ID']}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}"
-    predicate = {"buildDefinition": {"buildType": BUILD_TYPE, "externalParameters": {"sourceRun": f"https://github.com/{policy['repository']}/actions/runs/{source_run_id}/attempts/{source_attempt}", "profiles": sorted(policy["profiles"])}, "internalParameters": {"finalizerWorkflow": finalizer, "finalizerCommit": os.environ["GITHUB_SHA"], "signingTransactions": summaries}, "resolvedDependencies": dependencies}, "runDetails": {"builder": {"id": builder_id}, "metadata": {"invocationId": invocation}}}
+    predicate = final_predicate(policy, source_run_id, source_attempt, metadata, summaries, dependencies)
     (out / "predicate.json").write_bytes(json_bytes(predicate))
     (out / "verification.json").write_bytes(json_bytes({"version": 1, "source_run": source_run_id, "source_attempt": source_attempt, "source_commit": source_run["head_sha"], "profiles": summaries}))
     (out / "release.json").write_bytes(json_bytes({"tag_name": f"verified/{source_run_id}-{source_attempt}-{policy['policy_hash'][:16]}", "target_commitish": source_run["head_sha"]}))

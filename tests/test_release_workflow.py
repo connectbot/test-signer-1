@@ -19,8 +19,23 @@ SPEC.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_final_predicate_binds_control_plane_inputs_and_workflow(self):
+        policy = self.policy()
+        event = Path(self.tmp.name) / "dispatch.json"
+        inputs = {"source_run": "42", "source_attempt": "2"}
+        event.write_text(release.json.dumps({"inputs": inputs}))
+        environment = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_EVENT_PATH": str(event), "RUNNER_ENVIRONMENT": "github-hosted", "GITHUB_WORKFLOW_REF": f"{policy['repository']}/.github/workflows/signed-release.yml@refs/heads/main", "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "99", "GITHUB_RUN_ATTEMPT": "1"}
+        with mock.patch.dict(release.os.environ, environment, clear=True):
+            predicate = release.final_predicate(policy, 42, 2, {"id": policy["repository_id"], "owner": {"id": 7}, "default_branch": "main"}, {}, [])
+            self.assertEqual(predicate["buildDefinition"]["externalParameters"]["inputs"], inputs)
+            self.assertEqual(predicate["buildDefinition"]["externalParameters"]["workflow"]["path"], ".github/workflows/signed-release.yml")
+            self.assertEqual(predicate["buildDefinition"]["resolvedDependencies"][0]["digest"], {"gitCommit": "c" * 40})
+            event.write_text(release.json.dumps({"inputs": {**inputs, "source_run": "43"}}))
+            with self.assertRaises(ValueError):
+                release.final_predicate(policy, 42, 2, {"id": policy["repository_id"], "owner": {"id": 7}, "default_branch": "main"}, {}, [])
+
     def test_finalizer_recovery_requires_default_branch_context(self):
-        for event, ref, permitted in [("workflow_run", "refs/heads/main", True), ("workflow_dispatch", "refs/heads/main", True), ("workflow_dispatch", "refs/heads/untrusted", False), ("push", "refs/heads/main", False)]:
+        for event, ref, permitted in [("workflow_run", "refs/heads/main", False), ("workflow_dispatch", "refs/heads/main", True), ("workflow_dispatch", "refs/heads/untrusted", False), ("push", "refs/heads/main", False)]:
             with mock.patch.dict(release.os.environ, {"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref}, clear=True):
                 if permitted:
                     release.validate_finalizer_context({"default_branch": "main"})

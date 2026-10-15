@@ -27,21 +27,26 @@ GitHub provenance alone does not establish the appliance's integrity.
    and signs AABs with the upload key only. It records intents before key use
    and authenticates the resulting transaction with a separate RSA DSSE receipt
    key. Per-profile staging drafts are never automatically published.
-5. A `workflow_run` finalizer calls `release-attest.yml`. It executes the trusted
+5. A `workflow_run` gate dispatches a default-branch finalizer that calls
+   `release-attest.yml`. It executes the trusted
    default-branch helper, never the triggering source commit. It verifies both
    receipts, public policy, original provenance, payload preservation, Android
    reference signatures, lineage and transparency before attesting final hashes.
    A separate verified draft contains both variants and evidence. Publication is
    manual. The finalizer has a 30-minute signing wait and a 60-minute job limit.
 
-Finalization can also be retried with `workflow_dispatch` on the repository's
+Finalization can be retried with `workflow_dispatch` on the repository's
 default branch, supplying `source_run` and `source_attempt`. The same successful
 push-build, repository, provenance, policy, and payload checks apply. This lets
 operators recover verification or publication of the draft without rebuilding
 already-attested inputs or executing their source in the finalizer. Both the
 workflow and helper enforce the default-branch context. GitHub uploads left in
 `starter` state without a digest are removed from managed drafts before retry;
-conflicting completed assets remain errors.
+conflicting completed assets remain errors. Final provenance uses GitHub's
+supported workflow build type, records the dispatch inputs alongside the
+default-branch workflow identity, and binds source/receipt/policy dependencies.
+The automatic gate dispatches this workflow because that build type supports
+`workflow_dispatch`, not `workflow_run`, as the attested execution event.
 
 The certificate SAN and `build_signer_uri` identify the reusable builder;
 `build_config_uri` and provenance's external `workflow` identify the caller.

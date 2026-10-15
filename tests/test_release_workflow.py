@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import tarfile
 import unittest
+from unittest import mock
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,25 @@ SPEC.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_finalizer_recovery_requires_default_branch_context(self):
+        for event, ref, permitted in [("workflow_run", "refs/heads/main", True), ("workflow_dispatch", "refs/heads/main", True), ("workflow_dispatch", "refs/heads/untrusted", False), ("push", "refs/heads/main", False)]:
+            with mock.patch.dict(release.os.environ, {"GITHUB_EVENT_NAME": event, "GITHUB_REF": ref}, clear=True):
+                if permitted:
+                    release.validate_finalizer_context({"default_branch": "main"})
+                else:
+                    with self.assertRaises(ValueError):
+                        release.validate_finalizer_context({"default_branch": "main"})
+
+    def test_incomplete_final_asset_is_cleaned_but_conflicting_completed_asset_is_rejected(self):
+        with mock.patch.object(release, "rows", return_value=[{"name": "app.apk", "id": 7, "state": "starter", "digest": None}]), mock.patch.object(release, "run", return_value=b"") as run:
+            release.upload("example/repo", 1, "app.apk", b"artifact")
+            self.assertEqual(run.call_args_list[0].args, ("gh", "api", "--hostname", "github.com", "--method", "DELETE", "repos/example/repo/releases/assets/7"))
+            self.assertEqual(run.call_args_list[1].args[5], "POST")
+        with mock.patch.object(release, "rows", return_value=[{"name": "app.apk", "state": "uploaded", "digest": "wrong", "size": 8}]), mock.patch.object(release, "run") as run:
+            with self.assertRaises(ValueError):
+                release.upload("example/repo", 1, "app.apk", b"artifact")
+            run.assert_not_called()
+
     def test_source_pin_ignores_mtime_but_binds_paths_and_contents(self):
         def archive(name="src/Main.java", content=b"class Main {}", mtime=1, symlink=False):
             stream = io.BytesIO()

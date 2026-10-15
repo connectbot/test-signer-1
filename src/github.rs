@@ -270,11 +270,23 @@ impl Github {
         let mut existing = assets.iter().filter(|a| a["name"] == name);
         if let Some(asset) = existing.next() {
             ensure!(existing.next().is_none(), "duplicate release asset");
-            ensure!(
-                asset["digest"] == digest && asset["size"].as_u64() == Some(bytes.len() as u64),
-                "conflicting release asset"
-            );
-            return Ok(asset.clone());
+            if reusable_asset(asset, &digest, bytes.len())? {
+                return Ok(asset.clone());
+            }
+            // GitHub documents starter assets as leftovers from failed uploads.
+            // release() has already authenticated this job's managed draft.
+            let id = asset["id"]
+                .as_u64()
+                .filter(|id| *id > 0)
+                .ok_or_else(|| anyhow::anyhow!("incomplete asset ID missing"))?;
+            let response = self
+                .request(
+                    reqwest::Method::DELETE,
+                    &format!("/repos/{}/releases/assets/{id}", repo.name),
+                )?
+                .send()
+                .await?;
+            bounded(response, 1024).await?;
         }
         let mut url = reqwest::Url::parse(&format!(
             "https://uploads.github.com/repos/{}/releases/{release}/assets",
@@ -297,6 +309,19 @@ impl Github {
         );
         Ok(asset)
     }
+}
+
+fn reusable_asset(asset: &Value, digest: &str, size: usize) -> Result<bool> {
+    if asset["state"] == "starter" && asset["digest"].is_null() {
+        return Ok(false);
+    }
+    ensure!(
+        asset["state"] == "uploaded"
+            && asset["digest"] == digest
+            && asset["size"].as_u64() == Some(size as u64),
+        "conflicting release asset"
+    );
+    Ok(true)
 }
 
 fn storage_url(location: &str) -> Result<reqwest::Url> {
@@ -341,6 +366,34 @@ fn decode_bundle(bytes: &[u8], compressed: bool) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upload_recovery_replaces_only_incomplete_assets() {
+        let digest = "sha256:expected";
+        assert!(
+            !reusable_asset(
+                &json!({"state":"starter","digest":null,"size":100}),
+                digest,
+                100
+            )
+            .unwrap()
+        );
+        assert!(
+            reusable_asset(
+                &json!({"state":"uploaded","digest":digest,"size":100}),
+                digest,
+                100
+            )
+            .unwrap()
+        );
+        for value in [
+            json!({"state":"uploaded","digest":"wrong","size":100}),
+            json!({"state":"uploaded","digest":digest,"size":0}),
+            json!({"state":"starter","digest":digest,"size":100}),
+        ] {
+            assert!(reusable_asset(&value, digest, 100).is_err());
+        }
+    }
 
     #[test]
     fn attestation_storage_supports_json_and_bounded_raw_snappy() {

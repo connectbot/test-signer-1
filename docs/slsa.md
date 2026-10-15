@@ -34,6 +34,15 @@ GitHub provenance alone does not establish the appliance's integrity.
    A separate verified draft contains both variants and evidence. Publication is
    manual. The finalizer has a 30-minute signing wait and a 60-minute job limit.
 
+Finalization can also be retried with `workflow_dispatch` on the repository's
+default branch, supplying `source_run` and `source_attempt`. The same successful
+push-build, repository, provenance, policy, and payload checks apply. This lets
+operators recover verification or publication of the draft without rebuilding
+already-attested inputs or executing their source in the finalizer. Both the
+workflow and helper enforce the default-branch context. GitHub uploads left in
+`starter` state without a digest are removed from managed drafts before retry;
+conflicting completed assets remain errors.
+
 The certificate SAN and `build_signer_uri` identify the reusable builder;
 `build_config_uri` and provenance's external `workflow` identify the caller.
 Their commits may differ. Builder/helper files are fetched at the certificate's

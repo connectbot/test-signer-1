@@ -1,0 +1,14 @@
+{
+  "purpose": "Live Hermit signing end-to-end test",
+  "profiles": [
+    "google",
+    "oss"
+  ],
+  "apk_rotation": [
+    "A",
+    "B",
+    "C"
+  ],
+  "aab_signing": "independent upload key",
+  "publish": false
+}

@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   attest:
-    if: ${{ github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -24,7 +24,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      # workflow_run's SHA is the trusted default-branch finalizer, not the
+      # The dispatched SHA is the trusted default-branch finalizer, not the
       # Android source commit. Never check out or execute the triggering build.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

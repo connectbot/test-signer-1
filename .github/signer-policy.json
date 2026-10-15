@@ -13,10 +13,10 @@
   },
   "callers": {
     ".github/workflows/ci.yml": [
-      "81408425a308c9358dfb1be1dd3a4982aed1fd45d6bb9b5593d96550b8cace45"
+      "5dde62f9dbb7e87d115927679330d64f24b2563fec46cbd1f14f79fad0277ce5"
     ]
   },
-  "policy_hash": "71718a6ab8dfb4be19430be4ae6e0a555ce95955dd60aafbec6dfc782e39b3bd",
+  "policy_hash": "5cafa1a7b81b3668b1500727459f2b9b7fe2bde55f66c86f257244f455adbc53",
   "profiles": {
     "google": {
       "hybrid_min_sdk": null,
@@ -53,8 +53,8 @@
   ],
   "repository": "connectbot/test-signer-1",
   "repository_id": 1421097317,
-  "revision": 1,
-  "signer_revision": "5c6f1d223de422d04439d35b8d4422d7bd6997ac",
+  "revision": 2,
+  "signer_revision": "e6e16148cb95ca57eb93492d7cd7f90785ef5bdc",
   "version": 2,
   "visibility": "public"
 }

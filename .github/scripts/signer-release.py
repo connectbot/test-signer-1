@@ -352,12 +352,17 @@ def prepare_tools(tool_dir):
     run("javac", "-cp", tool_dir / "apksig-legacy.jar", "-d", legacy, here / "Reference.java")
 
 
+def validate_finalizer_context(metadata):
+    require(os.environ["GITHUB_EVENT_NAME"] in ("workflow_run", "workflow_dispatch") and os.environ["GITHUB_REF"] == f"refs/heads/{metadata['default_branch']}", "finalizer must run from the default branch")
+
+
 def prepare(policy_path, source_run_id, source_attempt, out, tool_dir):
     policy = load(policy_path.read_bytes())
     validate_policy(policy)
     require(os.environ["GITHUB_REPOSITORY"] == policy["repository"], "finalizer repository differs")
     source_run = api(f"repos/{policy['repository']}/actions/runs/{source_run_id}/attempts/{source_attempt}")
     metadata = api(f"repos/{policy['repository']}")
+    validate_finalizer_context(metadata)
     require(metadata["id"] == policy["repository_id"] and metadata["visibility"] == policy["visibility"], "repository identity changed")
     require(source_run["id"] == source_run_id and source_run["run_attempt"] == source_attempt and source_run["status"] == "completed" and source_run["conclusion"] == "success", "unsuccessful source run")
     require(source_run["event"] == "push" and source_run["head_repository"]["id"] == policy["repository_id"], "ineligible source run")
@@ -399,8 +404,11 @@ def upload(repo, release_id, name, data, content_type="application/octet-stream"
     existing = [a for a in rows(f"repos/{repo}/releases/{release_id}/assets") if a["name"] == name]
     require(len(existing) <= 1, "duplicate final release asset")
     if existing:
-        require(existing[0]["digest"] == f"sha256:{digest(data)}" and existing[0]["size"] == len(data), "conflicting final release asset")
-        return
+        if existing[0].get("state") == "starter" and existing[0].get("digest") is None:
+            run("gh", "api", "--hostname", "github.com", "--method", "DELETE", f"repos/{repo}/releases/assets/{existing[0]['id']}")
+        else:
+            require(existing[0].get("state") == "uploaded" and existing[0]["digest"] == f"sha256:{digest(data)}" and existing[0]["size"] == len(data), "conflicting final release asset")
+            return
     with tempfile.NamedTemporaryFile() as tmp:
         tmp.write(data)
         tmp.flush()

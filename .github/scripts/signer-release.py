@@ -144,7 +144,7 @@ def verify_provenance(path, bundle, policy, source_run, summary):
     require(digest(bundle.read_bytes()) == summary["bundle_sha256"], "upstream bundle differs")
     builder = policy["builder"]
     verified = load(run("gh", "attestation", "verify", path, "--bundle", bundle,
-        "--repo", policy["repository"], "--cert-identity", summary["builder"],
+        "--repo", policy["repository"],
         "--signer-workflow", f"{builder['repository']}/{builder['workflow']}",
         "--signer-digest", summary["builder_commit"], "--source-digest", source_run["head_sha"],
         "--source-ref", summary["ref"], "--deny-self-hosted-runners", "--format", "json"))
@@ -255,14 +255,38 @@ def unsigned_files(policy, source_run, receipt):
     return result
 
 
-def download_pinned(url, sha256, path):
+def source_tree_digest(data):
+    # Gitiles regenerates tar member mtimes per download. Pin every source path
+    # and its exact content instead of trusting mutable archive metadata.
+    require(len(data) <= MAX_BYTES, "source archive too large")
+    contents, seen, total = {}, set(), 0
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        for member in archive:
+            name = member.name.rstrip("/")
+            require(name and not name.startswith("/") and "\\" not in name and all(p not in ("", ".", "..") for p in name.split("/")), "unsafe source path")
+            require(name not in seen and len(seen) < 20_000, "duplicate/excessive source entries")
+            seen.add(name)
+            require(member.isdir() or member.isfile(), "unsupported source entry")
+            total += member.size
+            require(0 <= member.size <= MAX_BYTES and total <= MAX_BYTES, "expanded source archive too large")
+            if member.isfile():
+                content = archive.extractfile(member).read(member.size + 1)
+                require(len(content) == member.size, "truncated source entry")
+                contents[name] = digest(content)
+    require(contents, "empty source archive")
+    return digest(json_bytes(contents))
+
+
+def download_pinned(url, sha256, path, source_tree=False):
     require(url.startswith("https://") and valid_hash(sha256), "invalid tool pin")
     if not path.exists():
         with urllib.request.urlopen(url, timeout=120) as response:
             data = response.read(MAX_BYTES + 1)
-        require(len(data) <= MAX_BYTES and digest(data) == sha256, "tool download differs")
+        actual = source_tree_digest(data) if source_tree else digest(data)
+        require(len(data) <= MAX_BYTES and actual == sha256, "tool download differs")
         path.write_bytes(data)
-    require(digest(path.read_bytes()) == sha256, "cached tool differs")
+    data = path.read_bytes()
+    require((source_tree_digest(data) if source_tree else digest(data)) == sha256, "cached tool differs")
 
 
 def preserve_payload(unsigned, signed, additions):
@@ -310,7 +334,8 @@ def prepare_tools(tool_dir):
     here = Path(__file__).parent
     pins = load((here / "signer-toolchain-pins.json").read_bytes())
     for kind, name in (("bundletool", "bundletool.jar"), ("apksig_legacy", "apksig-legacy.jar"), ("apksig_source", "apksig-source.tar.gz")):
-        download_pinned(pins[kind + "_url"], pins[kind + "_sha256"], tool_dir / name)
+        is_source = kind == "apksig_source"
+        download_pinned(pins[kind + "_url"], pins[kind + ("_tree_sha256" if is_source else "_sha256")], tool_dir / name, source_tree=is_source)
     source = tool_dir / "source"
     source.mkdir(exist_ok=True)
     with tarfile.open(tool_dir / "apksig-source.tar.gz") as archive:

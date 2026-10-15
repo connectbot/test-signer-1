@@ -29,6 +29,13 @@ the old fallback warning.
   Upstream returned immediately after an unsuccessful AAAA lookup, so IPv4-only
   names never reached their A lookup. The live VM's DNS packet capture confirmed
   this failure against the auditor; single-family lookup failures still fail.
+- Eventfd: wake all registered readers after a write, including when cancelled
+  poll futures left stale registrations. Waking only one stale registration
+  stranded Tokio's active reactor until unrelated network traffic arrived.
+  Recheck readiness and register under one lock, deduplicate poll waiters, and
+  notify blocked writers when a read frees counter capacity. Run
+  `python3 tests/kernel-eventfd.py --kernel <prepared-kernel>` for the native
+  regression tests against the actual prepared kernel module.
 
 These fixes were exercised with a real Hermit guest under QEMU TCG, including an
 external collector outage without extra traffic to wake the guest. The negative

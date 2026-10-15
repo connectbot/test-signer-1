@@ -43,7 +43,7 @@ ml-dsa = { version = "=0.1.1", features = ["zeroize"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
 rand = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-no-provider"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-webpki-roots-no-provider"] }
 rsa = { version = "0.9", features = ["sha2"] }
 rusqlite = { version = "0.37", features = ["bundled"], optional = true }
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12"] }

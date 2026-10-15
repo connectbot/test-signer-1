@@ -8,6 +8,13 @@ on:
       source_attempt:
         type: number
         required: true
+    outputs:
+      artifact_id:
+        description: Immutable verified publishing handoff
+        value: ${{ jobs.attest.outputs.artifact_id }}
+      manifest_sha256:
+        description: SHA-256 of the attested release manifest
+        value: ${{ jobs.attest.outputs.manifest_sha256 }}
 permissions:
   contents: read
 concurrency:
@@ -18,6 +25,9 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      artifact_id: ${{ steps.handoff.outputs.artifact-id }}
+      manifest_sha256: ${{ steps.seal.outputs.manifest_sha256 }}
     permissions:
       contents: write
       actions: read
@@ -41,7 +51,7 @@ jobs:
           SOURCE_RUN: ${{ inputs.source_run }}
           SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
         run: |
-          python3 .github/scripts/signer-release.py prepare \
+          python3 .github/scripts/signer-publish.py prepare \
             --source-run "$SOURCE_RUN" --source-attempt "$SOURCE_ATTEMPT" \
             --policy .github/signer-policy.json \
             --out "$RUNNER_TEMP/verified-release" --tools "$RUNNER_TEMP/reference-tools"
@@ -54,16 +64,25 @@ jobs:
             ${{ runner.temp }}/verified-release/oss/app-signed.aab
             ${{ runner.temp }}/verified-release/google/app-signed.apk
             ${{ runner.temp }}/verified-release/google/app-signed.aab
+            ${{ runner.temp }}/verified-release/publish/*
           predicate-type: https://slsa.dev/provenance/v1
           predicate-path: ${{ runner.temp }}/verified-release/predicate.json
           create-storage-record: false
       - name: Prepare verified draft
+        id: seal
         env:
           GH_TOKEN: ${{ github.token }}
           BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
         run: |
-          cp "$BUNDLE" "$RUNNER_TEMP/verified-release/final.sigstore.json"
-          python3 .github/scripts/signer-release.py draft --out "$RUNNER_TEMP/verified-release"
+          python3 .github/scripts/signer-publish.py seal \
+            --out "$RUNNER_TEMP/verified-release" --bundle "$BUNDLE"
+      - name: Preserve immutable publishing handoff
+        id: handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-publishing-${{ inputs.source_run }}-${{ inputs.source_attempt }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/verified-release/publish/
+          if-no-files-found: error
       - name: Preserve verification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

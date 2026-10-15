@@ -50,3 +50,13 @@ jobs:
     with:
       source_run: ${{ fromJSON(inputs.source_run) }}
       source_attempt: ${{ fromJSON(inputs.source_attempt) }}
+  publish:
+    needs: finalize
+    uses: ./.github/workflows/release-publish.yml
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+    with:
+      artifact_id: ${{ needs.finalize.outputs.artifact_id }}
+      manifest_sha256: ${{ needs.finalize.outputs.manifest_sha256 }}

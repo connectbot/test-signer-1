@@ -365,7 +365,8 @@ def final_predicate(policy, source_run_id, source_attempt, metadata, summaries, 
     finalizer = os.environ["GITHUB_WORKFLOW_REF"]
     require(finalizer == f"{policy['repository']}/.github/workflows/signed-release.yml@{os.environ['GITHUB_REF']}", "unexpected finalizer caller")
     repository_uri = f"https://github.com/{policy['repository']}"
-    dependencies = [*dependencies, {"uri": f"git+{repository_uri}@{os.environ['GITHUB_REF']}", "digest": {"gitCommit": os.environ["GITHUB_SHA"]}}]
+    # GitHub's attestation API requires its workflow source as the first entry.
+    dependencies = [{"uri": f"git+{repository_uri}@{os.environ['GITHUB_REF']}", "digest": {"gitCommit": os.environ["GITHUB_SHA"]}}, *dependencies]
     github = {"event_name": "workflow_dispatch", "repository_id": str(metadata["id"]), "repository_owner_id": str(metadata["owner"]["id"]), "runner_environment": "github-hosted"}
     return {"buildDefinition": {"buildType": BUILD_TYPE, "externalParameters": {"workflow": {"repository": repository_uri, "ref": os.environ["GITHUB_REF"], "path": ".github/workflows/signed-release.yml"}, "inputs": inputs}, "internalParameters": {"github": github, "finalizerWorkflow": finalizer, "finalizerCommit": os.environ["GITHUB_SHA"], "signingTransactions": summaries}, "resolvedDependencies": dependencies}, "runDetails": {"builder": {"id": f"{repository_uri}/.github/workflows/release-attest.yml@{os.environ['GITHUB_REF']}"}, "metadata": {"invocationId": f"{repository_uri}/actions/runs/{os.environ['GITHUB_RUN_ID']}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}"}}}
 

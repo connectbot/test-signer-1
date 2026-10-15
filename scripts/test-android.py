@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Prepare pinned Android reference verifiers and run interoperability tests."""
-import argparse, hashlib, json, os, pathlib, subprocess, tarfile, urllib.request, zipfile
+import argparse, hashlib, importlib.util, json, os, pathlib, subprocess, tarfile, urllib.request, zipfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 p=argparse.ArgumentParser();p.add_argument("--cache",type=pathlib.Path,default=ROOT/"dist/reference");p.add_argument("--java-home",type=pathlib.Path,required=True);p.add_argument("--android-sdk",type=pathlib.Path,required=True);p.add_argument("--build-tools",default="36.0.0");p.add_argument("--platform",default="android-36");a=p.parse_args();a.cache.mkdir(parents=True,exist_ok=True)
 pins=json.loads((ROOT/"config/toolchain-pins.json").read_text())
+spec=importlib.util.spec_from_file_location("reference",ROOT/"integration/connectbot/.github/scripts/signer-release.py")
+reference=importlib.util.module_from_spec(spec);spec.loader.exec_module(reference)
 def download(kind,name):
     out=a.cache/name
     if not out.exists():
-        with urllib.request.urlopen(pins[kind+"_url"],timeout=120) as response: out.write_bytes(response.read())
-    if hashlib.sha256(out.read_bytes()).hexdigest()!=pins[kind+"_sha256"]: raise SystemExit("Hash mismatch: "+str(out))
+        with urllib.request.urlopen(pins[kind+"_url"],timeout=120) as response: out.write_bytes(response.read(reference.MAX_BYTES+1))
+    data=out.read_bytes()
+    actual=reference.source_tree_digest(data) if kind=="apksig_source" else hashlib.sha256(data).hexdigest()
+    if len(data)>reference.MAX_BYTES or actual!=pins[kind+("_tree_sha256" if kind=="apksig_source" else "_sha256")]: raise SystemExit("Hash mismatch: "+str(out))
     return out
 source=download("apksig_source","apksig-source.tar.gz");legacy=download("apksig_legacy","apksig-legacy.jar");bundletool=download("bundletool","bundletool.jar")
 source_dir=a.cache/"source";source_dir.mkdir(exist_ok=True)

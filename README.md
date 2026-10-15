@@ -28,6 +28,8 @@ python3 tests/qemu-smoke.py --loader dist/hermit-loader --tcg
 
 The reference helper compiles pinned Android 17 apksig source, uses the pinned older verifier for pre-37 platforms, creates matching real AAPT2 manifests, and verifies signatures, lineages, transparency, and bundle structure. Without the helper's environment, the optional external Android checks return early; ordinary `cargo test` is not evidence that those reference checks ran. The QEMU smoke test creates disposable keys, uses a temporary read-only filesystem export, and tests TLS, collector activation/readiness, and webhook authentication. It never contacts GitHub. Its unsandboxed virtiofsd option is limited to these disposable local fixtures.
 
+The apksig source URL uses an immutable commit. Its pin covers every source path and file digest; Gitiles tar timestamps vary between downloads. The JAR and loader pins cover the exact downloaded bytes.
+
 ## Configure the service
 
 Copy [signer.example.json](config/signer.example.json) into a protected host directory as `config.json`. Replace every placeholder: repository numeric ID and full name, package, GitHub App ID, workflow, exact refs, artifact names/files, key fingerprints, lineage hashes, and trust material. Example expiry `0` deliberately fails startup.

@@ -7,6 +7,7 @@ import io
 from pathlib import Path
 import subprocess
 import tempfile
+import tarfile
 import unittest
 import zipfile
 
@@ -17,6 +18,26 @@ SPEC.loader.exec_module(release)
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_source_pin_ignores_mtime_but_binds_paths_and_contents(self):
+        def archive(name="src/Main.java", content=b"class Main {}", mtime=1, symlink=False):
+            stream = io.BytesIO()
+            with tarfile.open(fileobj=stream, mode="w:gz") as tar:
+                member = tarfile.TarInfo(name)
+                member.mtime = mtime
+                member.size = len(content)
+                if symlink:
+                    member.type = tarfile.SYMTYPE
+                    member.linkname = "/tmp/outside"
+                tar.addfile(member, io.BytesIO(content))
+            return stream.getvalue()
+        original = release.source_tree_digest(archive())
+        self.assertEqual(original, release.source_tree_digest(archive(mtime=9000)))
+        self.assertNotEqual(original, release.source_tree_digest(archive(content=b"class Changed {}")))
+        self.assertNotEqual(original, release.source_tree_digest(archive(name="src/Other.java")))
+        for data in (archive(name="../Main.java"), archive(symlink=True)):
+            with self.assertRaises(ValueError):
+                release.source_tree_digest(data)
+
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()

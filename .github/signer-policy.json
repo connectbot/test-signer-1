@@ -16,7 +16,7 @@
       "5dde62f9dbb7e87d115927679330d64f24b2563fec46cbd1f14f79fad0277ce5"
     ]
   },
-  "policy_hash": "5cafa1a7b81b3668b1500727459f2b9b7fe2bde55f66c86f257244f455adbc53",
+  "policy_hash": "cbb327ea178f17f66e7ac73286b3ede42c7c71dbb7f716b4b4c3a639b42e1fc1",
   "profiles": {
     "google": {
       "hybrid_min_sdk": null,
@@ -53,8 +53,8 @@
   ],
   "repository": "connectbot/test-signer-1",
   "repository_id": 1421097317,
-  "revision": 2,
-  "signer_revision": "55291f599183c74b4f29643154f5d4aa0796e189",
+  "revision": 3,
+  "signer_revision": "c1419a17bf5c874b19681a4a58598c3a3001022b",
   "version": 2,
   "visibility": "public"
 }

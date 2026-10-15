@@ -14,7 +14,10 @@ the old fallback warning.
   Hermit connector performs it in a Tokio blocking task and propagates errors.
 - TCP drop: abort nonblocking connections rather than waiting for the peer from
   their destructor. This avoids blocking the async executor; a client interrupted
-  during close may need to retry.
+  during close may need to retry. Poll the NIC before removing the socket so its
+  reset reaches the peer immediately; otherwise a proxy retains a dead idle
+  connection and its next request fails. Exercise with the QEMU smoke test's
+  `--idle-close-check` option.
 - Executor timeout: convert Unix-epoch deadlines to remaining relative durations
   before waiting on a futex. The original passed an epoch deadline as a duration,
   causing requests to stall until another packet woke the guest.

@@ -7,6 +7,7 @@ p.add_argument("--loader", required=True, type=pathlib.Path)
 p.add_argument("--tcg", action="store_true")
 p.add_argument("--image", type=pathlib.Path, default=ROOT/"target/x86_64-unknown-hermit/release/signer")
 p.add_argument("--gdb-port", type=int)
+p.add_argument("--idle-close-check", action="store_true", help="Verify idle TCP close reaches peers without extra traffic")
 a = p.parse_args()
 request_timeout=600 if a.gdb_port else 45
 def run(args):
@@ -71,6 +72,15 @@ with tempfile.TemporaryDirectory(prefix="android-signer-smoke-") as temporary:
             except urllib.error.HTTPError as error: return error.code
         assert post("00"*32)==401
         assert post(hmac.new(webhook,body,hashlib.sha256).hexdigest())==200
+        if a.idle_close_check:
+            import http.client, select
+            idle = http.client.HTTPSConnection("localhost", 18444, context=context, timeout=5)
+            idle.request("GET", "/healthz")
+            response = idle.getresponse()
+            assert response.status == 200
+            response.read()
+            assert select.select([idle.sock], [], [], 70)[0], "Idle close did not reach peer; next proxied request would use a stale connection"
+            idle.close()
         import sqlite3
         with sqlite3.connect(d/"audit.sqlite") as db:
             assert db.execute("SELECT count(*) FROM policies").fetchone()[0]==1
@@ -85,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix="android-signer-smoke-") as temporary:
             urllib.request.urlopen("https://localhost:18444/readyz",context=context,timeout=request_timeout)
             raise AssertionError("Readiness must fail during ledger outage")
         except urllib.error.HTTPError as error: assert error.code==503
-        print("PASS: Hermit read-only secrets, VirtIO networking, TLS, durable policy activation, HMAC, fail-closed ledger outage")
+        print("PASS: Hermit read-only secrets, VirtIO networking, TLS, durable policy activation, HMAC, fail-closed ledger outage" + (", idle TCP close" if a.idle_close_check else ""))
     except Exception:
         print("Guest log:", guest_log.read_text()[-5000:])
         print("Collector log:", (d/"collector.log").read_text()[-2000:])

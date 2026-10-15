@@ -206,8 +206,8 @@ impl Loaded {
             "audit URL must be HTTPS without trailing slash"
         );
         ensure!(
-            config.max_artifact_bytes > 0 && config.max_artifact_bytes <= 512 * 1024 * 1024,
-            "invalid artifact size limit"
+            config.max_artifact_bytes > 0 && config.max_artifact_bytes <= 128 * 1024 * 1024,
+            "artifact size limit must be at most 128 MiB for the v1 memory budget"
         );
         ensure!(
             config.max_lineage_bytes >= 1024 && config.max_lineage_bytes <= 16 * 1024 * 1024,

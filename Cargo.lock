@@ -97,6 +97,7 @@ dependencies = [
  "sigstore-trust-root",
  "sigstore-types",
  "sigstore-verify",
+ "snap",
  "subtle",
  "tempfile",
  "tokio",
@@ -2364,6 +2365,12 @@ name = "smallvec"
 version = "1.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+
+[[package]]
+name = "snap"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "199905e6153d6405f9728fe44daace35f8f837bbf830bb6e85fbd5828709a886"
 
 [[package]]
 name = "socket2"

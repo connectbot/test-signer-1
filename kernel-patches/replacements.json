@@ -7,7 +7,7 @@
   {
     "file": "src/fd/socket/tcp.rs",
     "before": "\t\tlet _ = block_on(self.close(), None);",
-    "after": "\t\t// Nonblocking descriptors must not wait for a peer during Drop. The\n\t\t// application has completed its writes; abort releases an unresponsive\n\t\t// peer without blocking the single-threaded async executor.\n\t\tif self.is_nonblocking {\n\t\t\tlet mut guard = NIC.lock();\n\t\t\tlet nic = guard.as_nic_mut().unwrap();\n\t\t\tfor h in self.handle.iter() {\n\t\t\t\tnic.get_mut_socket::<tcp::Socket<'_>>(*h).abort();\n\t\t\t}\n\t\t} else {\n\t\t\tlet _ = block_on(self.close(), None);\n\t\t}"
+    "after": "\t\t// Nonblocking descriptors must not wait for a peer during Drop. The\n\t\t// application has completed its writes; abort releases an unresponsive\n\t\t// peer without blocking the single-threaded async executor.\n\t\tif self.is_nonblocking {\n\t\t\tlet mut guard = NIC.lock();\n\t\t\tlet nic = guard.as_nic_mut().unwrap();\n\t\t\tfor h in self.handle.iter() {\n\t\t\t\tnic.get_mut_socket::<tcp::Socket<'_>>(*h).abort();\n\t\t\t}\n\t\t\t// Transmit the reset before destroy_socket removes its pending state.\n\t\t\t// Otherwise peers retain a dead keep-alive connection until their next request.\n\t\t\tnic.poll_common(crate::executor::network::now());\n\t\t} else {\n\t\t\tlet _ = block_on(self.close(), None);\n\t\t}"
   },
   {
     "file": "src/syscalls/socket/mod.rs",

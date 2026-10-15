@@ -52,6 +52,7 @@ rustls-rustcrypto = "=0.0.2-alpha"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = { version = "0.10", features = ["oid"] }
+snap = "1.1"
 sigstore-crypto = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }
 sigstore-types = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }
 sigstore-trust-root = { git = "https://github.com/sigstore/sigstore-rust", rev = "f950b1b683560aadf7737539f8d7eaa656a9f0c0", default-features = false }

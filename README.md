@@ -32,7 +32,7 @@ The reference helper compiles pinned Android 17 apksig source, uses the pinned o
 
 Copy [signer.example.json](config/signer.example.json) into a protected host directory as `config.json`. Replace every placeholder: repository numeric ID and full name, package, GitHub App ID, workflow, exact refs, artifact names/files, key fingerprints, lineage hashes, and trust material. Example expiry `0` deliberately fails startup.
 
-The default artifact limit is 64 MiB and applies to downloads, original files, and aggregate ZIP expansion, including the nested APK/AAB. Start with 2 GiB guest memory at that limit; increase memory and test peak usage before raising it. Signing keeps inputs and outputs in memory.
+The default artifact limit is 64 MiB and applies to downloads, original files, and aggregate ZIP expansion, including the nested APK/AAB. Version 1 caps the configured limit at 128 MiB; ConnectBot's AABs need that setting because they expand to roughly 100 MiB. Use 2 GiB fixed guest memory and one signing worker. Inputs are released after verification, each expanded input map is released before its output is reopened for verification, and uploads consume their buffers. ZIP generation is bounded while writing, allowing up to 16 MiB above the input limit for signing metadata and alignment. Measure peak usage before changing this resource profile; compressed file size alone does not describe memory use.
 
 Provision the following into that directory:
 

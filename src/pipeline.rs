@@ -90,14 +90,15 @@ async fn artifact(
             archive::read_limited(&zip, github.max_bytes as u64)?,
         );
     }
-    let entry = cache[artifact_name]
-        .get(file_name)
+    let entry = cache
+        .get_mut(artifact_name)
+        .and_then(|entries| entries.remove(file_name))
         .ok_or_else(|| anyhow::anyhow!("configured artifact file missing"))?;
     ensure!(
         entry.bytes.len() <= github.max_bytes,
         "artifact file too large"
     );
-    Ok((entry.bytes.clone(), meta.clone()))
+    Ok((entry.bytes, meta.clone()))
 }
 async fn provenance(
     github: &Github,
@@ -118,9 +119,10 @@ async fn provenance(
         .await?;
     let trust = &loaded.config.trust_roots[&repo.visibility];
     for b in bundles {
+        let bundle = github.attestation_bundle(repo.id, &b).await?;
         if let Ok(result) = crate::attestation::verify(
             bytes,
-            &b["bundle"],
+            &bundle,
             repo,
             trust,
             &job.job.commit,
@@ -170,7 +172,7 @@ async fn provenance(
                     )
                     .await?;
             }
-            return Ok((result, serde_json::to_vec(&b["bundle"])?));
+            return Ok((result, serde_json::to_vec(&bundle)?));
         }
     }
     anyhow::bail!("no valid attestation satisfies signing policy")
@@ -269,6 +271,10 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
     apk::ensure_unsigned(&apk_bytes)?;
     let mut apk_entries = archive::read_limited(&apk_bytes, github.max_bytes as u64)?;
     let mut aab_entries = archive::read_limited(&aab_bytes, github.max_bytes as u64)?;
+    let apk_input_sha256 = crate::sha256(&apk_bytes);
+    let aab_input_sha256 = crate::sha256(&aab_bytes);
+    drop(apk_bytes);
+    drop(aab_bytes);
     archive::unsigned(&apk_entries)?;
     archive::unsigned(&aab_entries)?;
     let aab_manifest = &aab_entries
@@ -322,7 +328,7 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         hybrid,
     };
     ledger.event(claim,"inputs.verified",json!({"apk":apk_provenance,"aab":aab_provenance,"apk_artifact_id":apk_meta["id"],"aab_artifact_id":aab_meta["id"],"package":artifact_profile.package,"version_code":apk_id.version})).await?;
-    let intent = |operation: &str, k: &crate::crypto::SigningKey| json!({"operation":operation,"key_fingerprint":k.fingerprint(),"policy_hash":claim.job.policy_hash,"lineage_sha256":signing.lineage_sha256,"apk_input_sha256":crate::sha256(&apk_bytes),"aab_input_sha256":crate::sha256(&aab_bytes)});
+    let intent = |operation: &str, k: &crate::crypto::SigningKey| json!({"operation":operation,"key_fingerprint":k.fingerprint(),"policy_hash":claim.job.policy_hash,"lineage_sha256":signing.lineage_sha256,"apk_input_sha256":apk_input_sha256,"aab_input_sha256":aab_input_sha256});
     ledger
         .event(
             claim,
@@ -344,7 +350,26 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         .event(claim, "sign.intent", intent("aab-cms", upload_key))
         .await?;
     jar::sign(&mut aab_entries, upload_key)?;
-    let signed_aab = archive::write(&aab_entries, false)?;
+    // Allow bounded signature metadata and alignment overhead above the input
+    // budget; do not retain expanded input and verification maps together.
+    let output_limit = (github.max_bytes + 16 * 1024 * 1024) as u64;
+    let signed_aab = archive::write_limited(&aab_entries, false, output_limit)?;
+    drop(aab_entries);
+    {
+        let final_aab = archive::read_limited(&signed_aab, output_limit)?;
+        transparency::verify(
+            &final_aab[transparency::BUNDLE_PATH].bytes,
+            &statement,
+            &transparency_key.certificate,
+        )?;
+        jar::verify_output(&final_aab, upload_key)?;
+        let final_statement =
+            transparency::statement(&final_aab, artifact_profile.archive_resource.as_ref())?;
+        ensure!(
+            final_statement == statement,
+            "AAB code changed during signing"
+        );
+    }
     ledger
         .event(
             claim,
@@ -355,28 +380,23 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
     for operation in apk::planned_operations(&profile)? {
         ledger.event(claim, "sign.intent", operation).await?;
     }
-    let aligned = archive::write(&apk_entries, true)?;
+    let aligned = archive::write_limited(&apk_entries, true, output_limit)?;
+    drop(apk_entries);
     let signed_apk = apk::sign(&aligned, &profile)?;
-    let final_apk = archive::read(&signed_apk)?;
-    let final_aab = archive::read(&signed_aab)?;
-    transparency::verify(
-        &final_apk[transparency::APK_PATH].bytes,
-        &statement,
-        &transparency_key.certificate,
-    )?;
-    transparency::verify(
-        &final_aab[transparency::BUNDLE_PATH].bytes,
-        &statement,
-        &transparency_key.certificate,
-    )?;
-    transparency::check_apk(&statement, &final_apk)?;
-    jar::verify_output(&final_aab, upload_key)?;
-    let final_statement =
-        transparency::statement(&final_aab, artifact_profile.archive_resource.as_ref())?;
     ensure!(
-        final_statement == statement,
-        "AAB code changed during signing"
+        signed_apk.len() as u64 <= output_limit,
+        "signed APK output limit exceeded"
     );
+    drop(aligned);
+    {
+        let final_apk = archive::read_limited(&signed_apk, output_limit)?;
+        transparency::verify(
+            &final_apk[transparency::APK_PATH].bytes,
+            &statement,
+            &transparency_key.certificate,
+        )?;
+        transparency::check_apk(&statement, &final_apk)?;
+    }
     ledger.event(claim,"sign.result",json!({"operation":"apk","sha256":crate::sha256(&signed_apk),"operations":apk::planned_operations(&profile)?,"lineage_sha256":lineage.digest()?})).await?;
     let mut outputs = BTreeMap::from([
         ("app-signed.apk".to_string(), signed_apk),
@@ -395,7 +415,7 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
     }
     outputs.insert("unsigned-apk.sigstore.json".into(), apk_bundle);
     outputs.insert("unsigned-aab.sigstore.json".into(), aab_bundle);
-    let receipt = json!({"version":2,"repository":repo.name,"artifacts":{"apk":apk_meta,"aab":aab_meta},"signer":{"version":env!("CARGO_PKG_VERSION"),"revision":env!("SIGNER_SOURCE_REVISION")},"job":claim.job,"package":artifact_profile.package,"version_code":apk_id.version,"provenance":{"apk":apk_provenance,"aab":aab_provenance},"inputs":{"apk":crate::sha256(&apk_bytes),"aab":crate::sha256(&aab_bytes)},"outputs":outputs.iter().map(|(n,b)|json!({"name":n,"sha256":crate::sha256(b),"bytes":b.len()})).collect::<Vec<_>>(),"keys":{"upload":upload_key.fingerprint(),"transparency":transparency_key.fingerprint(),"original":profile.original.fingerprint(),"classical":profile.current.fingerprint(),"hybrid":profile.hybrid.as_ref().map(|h|json!({"rsa":h.classical.fingerprint(),"pqc":h.pqc.fingerprint()}))},"rotation_min_sdk":signing.rotation_min_sdk,"hybrid_min_sdk":profile.hybrid.as_ref().map(|_|37),"lineage":{"sha256":lineage.digest()?,"certificates":lineage.fingerprints(),"capabilities":lineage.nodes.iter().map(|n|n.flags).collect::<Vec<_>>()}});
+    let receipt = json!({"version":2,"repository":repo.name,"artifacts":{"apk":apk_meta,"aab":aab_meta},"signer":{"version":env!("CARGO_PKG_VERSION"),"revision":env!("SIGNER_SOURCE_REVISION")},"job":claim.job,"package":artifact_profile.package,"version_code":apk_id.version,"provenance":{"apk":apk_provenance,"aab":aab_provenance},"inputs":{"apk":apk_input_sha256,"aab":aab_input_sha256},"outputs":outputs.iter().map(|(n,b)|json!({"name":n,"sha256":crate::sha256(b),"bytes":b.len()})).collect::<Vec<_>>(),"keys":{"upload":upload_key.fingerprint(),"transparency":transparency_key.fingerprint(),"original":profile.original.fingerprint(),"classical":profile.current.fingerprint(),"hybrid":profile.hybrid.as_ref().map(|h|json!({"rsa":h.classical.fingerprint(),"pqc":h.pqc.fingerprint()}))},"rotation_min_sdk":signing.rotation_min_sdk,"hybrid_min_sdk":profile.hybrid.as_ref().map(|_|37),"lineage":{"sha256":lineage.digest()?,"certificates":lineage.fingerprints(),"capabilities":lineage.nodes.iter().map(|n|n.flags).collect::<Vec<_>>()}});
     outputs.insert(
         "signing-receipt.json".into(),
         serde_json::to_vec_pretty(&receipt)?,
@@ -428,8 +448,15 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         .as_u64()
         .ok_or_else(|| anyhow::anyhow!("release ID missing"))?;
     for (name, bytes) in outputs {
-        let asset = github.upload(repo, release_id, &name, &bytes).await?;
-        ledger.event(claim,"upload.receipt",json!({"release_id":release_id,"asset_id":asset["id"],"name":name,"sha256":crate::sha256(&bytes)})).await?;
+        let digest = crate::sha256(&bytes);
+        let asset = github.upload(repo, release_id, &name, bytes).await?;
+        ledger
+            .event(
+                claim,
+                "upload.receipt",
+                json!({"release_id":release_id,"asset_id":asset["id"],"name":name,"sha256":digest}),
+            )
+            .await?;
     }
     Ok(())
 }

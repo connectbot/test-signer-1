@@ -259,7 +259,14 @@ pub fn sign(bytes: &[u8], profile: &Profile<'_>) -> Result<Vec<u8>> {
     block.extend(pairs);
     block.extend(size.to_le_bytes());
     block.extend(MAGIC);
-    let mut out = bytes[..l.central].to_vec();
+    let mut out = Vec::new();
+    out.try_reserve_exact(
+        bytes
+            .len()
+            .checked_add(block.len())
+            .ok_or_else(|| anyhow::anyhow!("APK size overflow"))?,
+    )?;
+    out.extend_from_slice(&bytes[..l.central]);
     out.extend(&block);
     out.extend_from_slice(&bytes[l.central..]);
     let offset = l.eocd + block.len() + 16;

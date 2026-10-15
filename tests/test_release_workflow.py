@@ -26,10 +26,12 @@ class ReleaseTests(unittest.TestCase):
         event.write_text(release.json.dumps({"inputs": inputs}))
         environment = {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main", "GITHUB_EVENT_PATH": str(event), "RUNNER_ENVIRONMENT": "github-hosted", "GITHUB_WORKFLOW_REF": f"{policy['repository']}/.github/workflows/signed-release.yml@refs/heads/main", "GITHUB_SHA": "c" * 40, "GITHUB_RUN_ID": "99", "GITHUB_RUN_ATTEMPT": "1"}
         with mock.patch.dict(release.os.environ, environment, clear=True):
-            predicate = release.final_predicate(policy, 42, 2, {"id": policy["repository_id"], "owner": {"id": 7}, "default_branch": "main"}, {}, [])
+            dependency = {"uri": "urn:test:unsigned", "digest": {"sha256": "d" * 64}}
+            predicate = release.final_predicate(policy, 42, 2, {"id": policy["repository_id"], "owner": {"id": 7}, "default_branch": "main"}, {}, [dependency])
             self.assertEqual(predicate["buildDefinition"]["externalParameters"]["inputs"], inputs)
             self.assertEqual(predicate["buildDefinition"]["externalParameters"]["workflow"]["path"], ".github/workflows/signed-release.yml")
             self.assertEqual(predicate["buildDefinition"]["resolvedDependencies"][0]["digest"], {"gitCommit": "c" * 40})
+            self.assertEqual(predicate["buildDefinition"]["resolvedDependencies"][1], dependency)
             event.write_text(release.json.dumps({"inputs": {**inputs, "source_run": "43"}}))
             with self.assertRaises(ValueError):
                 release.final_predicate(policy, 42, 2, {"id": policy["repository_id"], "owner": {"id": 7}, "default_branch": "main"}, {}, [])

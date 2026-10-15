@@ -1,5 +1,60 @@
 {
+  "builder": {
+    "helpers": {},
+    "refs": [
+      "refs/heads/main"
+    ],
+    "repository": "connectbot/test-signer-1",
+    "repository_id": 1421097317,
+    "sha256": [
+      "88634a70bbfb85d07d79a81f90f3e399e7163bd0ea92215874b6ce1a80d578e3"
+    ],
+    "workflow": ".github/workflows/ci-build.yml"
+  },
+  "callers": {
+    ".github/workflows/ci.yml": [
+      "81408425a308c9358dfb1be1dd3a4982aed1fd45d6bb9b5593d96550b8cace45"
+    ]
+  },
+  "policy_hash": "71718a6ab8dfb4be19430be4ae6e0a555ce95955dd60aafbec6dfc782e39b3bd",
+  "profiles": {
+    "google": {
+      "hybrid_min_sdk": null,
+      "keys": {
+        "classical": "6e510f9c248e753a676574ca45dab49778ea3982dbca0e56d9374b0e8f50232e",
+        "hybrid": null,
+        "original": "773b07f877303904a904d71f010bfc3b66a6e6aea8b582c85ee4e9c8a83a7962",
+        "transparency": "cd21a0c0adfbb2f57fc5e68b1d7b710a91b313a3b9b32eddc3f4807070b16be5",
+        "upload": "47ffad04ad018d3fb8f319eb71e0b384b874325cb4605970db7646df270c9744"
+      },
+      "lineage_sha256": "80584460793f5cb4f3e97018cc5aba822835d7cd01f657473c1175c77bf2794b",
+      "package": "org.connectbot",
+      "rotation_min_sdk": 33
+    },
+    "oss": {
+      "hybrid_min_sdk": null,
+      "keys": {
+        "classical": "6e510f9c248e753a676574ca45dab49778ea3982dbca0e56d9374b0e8f50232e",
+        "hybrid": null,
+        "original": "773b07f877303904a904d71f010bfc3b66a6e6aea8b582c85ee4e9c8a83a7962",
+        "transparency": "cd21a0c0adfbb2f57fc5e68b1d7b710a91b313a3b9b32eddc3f4807070b16be5",
+        "upload": "47ffad04ad018d3fb8f319eb71e0b384b874325cb4605970db7646df270c9744"
+      },
+      "lineage_sha256": "80584460793f5cb4f3e97018cc5aba822835d7cd01f657473c1175c77bf2794b",
+      "package": "org.connectbot",
+      "rotation_min_sdk": 33
+    }
+  },
+  "receipt_keys": {
+    "c39417bc0184ad027b8f8c821c0efce0f56577a5faa112471ba351de1872bc6d": "MIIEMzCCApugAwIBAgIUZhpPHm5arIDcTxok26GHNqe5H8YwDQYJKoZIhvcNAQELBQAwKTEnMCUGA1UEAwweRGlzcG9zYWJsZSBzaWduZXIgdGVzdCByZWNlaXB0MB4XDTI2MTAxNTE3MjkyN1oXDTI2MTExNDE3MjkyN1owKTEnMCUGA1UEAwweRGlzcG9zYWJsZSBzaWduZXIgdGVzdCByZWNlaXB0MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAvmt4AForgW8g43qCAXU9e2UyKjxLSagrQVA+2FFuk2Yv2ePbugn6aDBacs+TzG6HCQrgRGRBUAk6iFXfFilUeG9fmceYJKAwMlwHQrujUoO4a//5KgqXLY/DLFEQSU5suwOyTp/Ab9c3bih88Z9Ma/71obfYmLtkXfumrSsJXA0FNFgUodPtiouzlRG1hVDSPTBHWxQLHUvZ/OHBVF5y2oA1kK6Ou25gOR8+M0mh1iUKvnW+66vTyaycmo5TnAhReQyJ8eqwrAZ4KDXYBEA8MNmPG+2rfQShRn1i4b7JyrkW2doEUSQ+r4MYk8Uiwif8XpPu5VOKJr04So5V1Tj1QUdIPdlhzFzBKenenJfcjlQSexalXK0eHAQUx4DTkyPKKcExOj+thoA0ziaNUfxl0GVkGW6QNCCnODQ+T9H0d5vq36nMPDUrfxYJkxaSIBod4ZF0hCrEumgqAXtmjTHUVUnQZ/mFcsWPIdKFsvFMhefm/zt3estQQhWFy9+UM4ETAgMBAAGjUzBRMB0GA1UdDgQWBBSFTLwfFnSAetvxx/42SzmoXzk6PzAfBgNVHSMEGDAWgBSFTLwfFnSAetvxx/42SzmoXzk6PzAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBgQA/XqA6pswPfaY5glfX8V2MJI8Lg6Yt5pz1nfzf9iuCVv9v+9sC+FCekghFQIAdtR458ZpKczRCLJByeQFFnjXWaVnfJaXC2mk0uVp44tgBTHp7VoAASnTKlYK/bxTZZ3aNqPTb+pQYmeATgIFU9lx0hRndTIxux6T65IKY3u40UVJmWWiEZowbZI5GOVqYYoowglvhOSNVeN2RyU3KRaWBAWXJcW9tQIRCIlem0EUNcA8AIghf3iiSmNHJJRjjrQqUtlffFI10lNa41/krRDqqOxcaSFXQJEl+ZnOLGmCIztZQPic/+Jv35wBZjvxToIDdM3dK+MplhCVkeE81xgfiCYYZqNuOEVjaMfLWlRBzNTpwr0PP/gNQo053dq67SAAaqiJVBNKRuBSOUGLCj9eI3ssEjXlzSmGkqdjRz/8XTUKVUxp7Go9yLxh7glGdcVSSg8oITC/3/e8UD7UTK5VUJiDNKuCpLWqw10xTWjmpPMZ9IQuTLVx+2GctoZW+68U="
+  },
+  "refs": [
+    "refs/heads/main"
+  ],
+  "repository": "connectbot/test-signer-1",
+  "repository_id": 1421097317,
+  "revision": 1,
+  "signer_revision": "5c6f1d223de422d04439d35b8d4422d7bd6997ac",
   "version": 2,
-  "deployment_configured": false,
-  "reason": "Export a public policy with signer-admin export-release-policy after provisioning the test appliance."
+  "visibility": "public"
 }

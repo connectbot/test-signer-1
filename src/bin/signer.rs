@@ -10,6 +10,10 @@ async fn main() -> anyhow::Result<()> {
     let path = std::env::var_os("SIGNER_CONFIG")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| "/root/config.json".into());
+    if !path.try_exists()? && std::path::Path::new("/root/bootstrap.json").try_exists()? {
+        return android_signer::server::provisioning(std::path::Path::new("/root/bootstrap.json"))
+            .await;
+    }
     let loaded = android_signer::config::Loaded::read(&path)?;
     android_signer::server::run(loaded).await
 }

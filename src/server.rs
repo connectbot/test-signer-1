@@ -1,6 +1,6 @@
 use crate::{
     config::Loaded,
-    ledger::{Job, Ledger, job_id},
+    ledger::{Job, Ledger, profile_job_id},
 };
 use anyhow::{Result, ensure};
 use axum::{
@@ -61,7 +61,11 @@ async fn webhook(
         .iter()
         .find(|r| r.id == repo_id)
         .ok_or((StatusCode::FORBIDDEN, "repository not eligible"))?;
-    if value["repository"]["full_name"] != repo.name || value["workflow"]["path"] != repo.workflow {
+    if value["repository"]["full_name"] != repo.name
+        || !value["workflow"]["path"]
+            .as_str()
+            .is_some_and(|p| repo.callers.contains_key(p))
+    {
         return Err((StatusCode::FORBIDDEN, "workflow not eligible"));
     }
     let run = &value["workflow_run"];
@@ -79,22 +83,28 @@ async fn webhook(
         .loaded
         .policy_hash(repo)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "policy unavailable"))?;
-    let job = Job {
-        id: job_id(repo.id, run_id, attempt, &policy),
-        repository_id: repo.id,
-        run_id,
-        attempt,
-        commit,
-        policy_hash: policy,
-        revision: repo.revision,
-    };
-    app.ledger.enqueue(&job).await.map_err(|_| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            "durable ledger unavailable",
-        )
-    })?;
-    Ok((StatusCode::ACCEPTED, Json(json!({"job_id":job.id}))))
+    let mut jobs = vec![];
+    for profile in repo.profiles.keys() {
+        let job = Job {
+            version: 2,
+            profile: profile.clone(),
+            id: profile_job_id(repo.id, run_id, attempt, profile, &policy),
+            repository_id: repo.id,
+            run_id,
+            attempt,
+            commit: commit.clone(),
+            policy_hash: policy.clone(),
+            revision: repo.revision,
+        };
+        app.ledger.enqueue(&job).await.map_err(|_| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "durable ledger unavailable",
+            )
+        })?;
+        jobs.push(job.id);
+    }
+    Ok((StatusCode::ACCEPTED, Json(json!({"job_ids":jobs}))))
 }
 pub async fn serve_tls(
     router: Router,
@@ -243,6 +253,42 @@ pub async fn run(loaded: Loaded) -> Result<()> {
         &loaded.config.listen,
         &loaded.config.tls_certificate,
         &loaded.config.tls_private_key,
+    )
+    .await
+}
+
+/// Explicit provisioning export: no signing policy, keys, queue or GitHub client.
+/// Invalid operational configuration never falls back to this mode.
+pub async fn provisioning(path: &Path) -> Result<()> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Bootstrap {
+        listen: String,
+        tls_certificate: std::path::PathBuf,
+        tls_private_key: std::path::PathBuf,
+    }
+    let bootstrap: Bootstrap = serde_json::from_slice(&std::fs::read(path)?)?;
+    tracing::warn!(
+        "Provisioning only: signing disabled; configure GitHub App and durable collector"
+    );
+    let router = Router::new()
+        .route(
+            "/healthz",
+            get(|| async {
+                Json(json!({"ok":true,"mode":"provisioning","signing_enabled":false}))
+            }),
+        )
+        .route("/readyz", get(|| async { StatusCode::SERVICE_UNAVAILABLE }))
+        .route(
+            "/webhooks/github",
+            post(|| async { StatusCode::SERVICE_UNAVAILABLE }),
+        )
+        .layer(DefaultBodyLimit::max(256 * 1024));
+    serve_tls(
+        router,
+        &bootstrap.listen,
+        &bootstrap.tls_certificate,
+        &bootstrap.tls_private_key,
     )
     .await
 }

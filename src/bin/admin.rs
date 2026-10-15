@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 #[derive(Parser)]
 #[command(
-    about = "Offline Android signing lineage administration. No network access or production key generation."
+    about = "Offline Android signing administration and release-policy export. No network access or key generation."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -15,6 +15,24 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    ExportReleasePolicy {
+        #[arg(long)]
+        config: PathBuf,
+        #[arg(long)]
+        repository: String,
+        #[arg(long)]
+        signer_revision: String,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    VerifyReceipt {
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long)]
+        certificate_der: PathBuf,
+        #[arg(long)]
+        fingerprint: String,
+    },
     Init {
         #[arg(long)]
         key: PathBuf,
@@ -115,6 +133,47 @@ fn report(lineage: &Lineage) -> Result<()> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
+        Command::ExportReleasePolicy {
+            config,
+            repository,
+            signer_revision,
+            out,
+        } => {
+            use std::io::Write;
+            let loaded = android_signer::config::Loaded::read(&config)?;
+            let repo = loaded
+                .config
+                .repositories
+                .iter()
+                .find(|r| r.name == repository)
+                .ok_or_else(|| anyhow::anyhow!("repository not configured"))?;
+            let policy = loaded.release_policy(repo, &signer_revision)?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(out)?;
+            file.write_all(&serde_json::to_vec_pretty(&policy)?)?;
+            file.sync_all()?;
+            Ok(())
+        }
+        Command::VerifyReceipt {
+            input,
+            certificate_der,
+            fingerprint,
+        } => {
+            ensure!(
+                std::fs::metadata(&input)?.len() <= 8 * 1024 * 1024
+                    && std::fs::metadata(&certificate_der)?.len() <= 65536,
+                "receipt/certificate too large"
+            );
+            let receipt = android_signer::receipt::verify(
+                &std::fs::read(input)?,
+                &std::fs::read(certificate_der)?,
+                &fingerprint,
+            )?;
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
+            Ok(())
+        }
         Command::Init { key, cert, out } => write(
             &out,
             &Lineage::root(&SigningKey::load(&key, &cert)?),

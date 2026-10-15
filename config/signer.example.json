@@ -25,6 +25,11 @@
       "private_key": "/root/transparency.pk8",
       "certificate": "/root/transparency.pem",
       "fingerprint": "REPLACE_WITH_CERTIFICATE_DER_SHA256"
+    },
+    "receipt": {
+      "private_key": "/root/receipt.pk8",
+      "certificate": "/root/receipt.pem",
+      "fingerprint": "REPLACE_WITH_CERTIFICATE_DER_SHA256"
     }
   },
   "trust_roots": {
@@ -43,7 +48,6 @@
     {
       "id": 123456789,
       "name": "example/android-app",
-      "workflow": ".github/workflows/android-build.yml",
       "refs": [
         "refs/heads/main"
       ],
@@ -55,24 +59,48 @@
         "github-hosted"
       ],
       "visibility": "public",
-      "package": "net.example.android",
-      "apk_artifact": "unsigned-apk",
-      "aab_artifact": "unsigned-aab",
-      "apk_file": "app.apk",
-      "aab_file": "app.aab",
-      "revision": 1,
-      "archive_resource": null,
-      "signing": {
-        "original_key": "apk-a",
-        "current_key": "apk-a",
-        "upload_key": "upload",
-        "transparency_key": "transparency",
-        "lineage": "/root/apk-lineage.bin",
-        "lineage_sha256": "REPLACE_WITH_SHA256",
-        "rotation_min_sdk": 33,
-        "allow_rollback": false,
-        "hybrid": null
-      }
+      "revision": 2,
+      "callers": {
+        ".github/workflows/android-build.yml": [
+          "REPLACE_WITH_WORKFLOW_CONTENT_SHA256"
+        ]
+      },
+      "builder": {
+        "repository": "example/android-app",
+        "repository_id": 123456789,
+        "workflow": ".github/workflows/android-build-reusable.yml",
+        "refs": [
+          "refs/heads/main"
+        ],
+        "sha256": [
+          "REPLACE_WITH_WORKFLOW_CONTENT_SHA256"
+        ],
+        "helpers": {}
+      },
+      "receipt_key": "receipt",
+      "profiles": {
+        "default": {
+          "package": "net.example.android",
+          "apk_artifact": "unsigned-default-{attempt}",
+          "aab_artifact": "unsigned-default-{attempt}",
+          "apk_file": "app.apk",
+          "aab_file": "app.aab",
+          "signing": {
+            "original_key": "apk-a",
+            "current_key": "apk-a",
+            "upload_key": "upload",
+            "transparency_key": "transparency",
+            "lineage": "/root/apk-lineage.bin",
+            "lineage_sha256": "REPLACE_WITH_SHA256",
+            "rotation_min_sdk": 33,
+            "allow_rollback": false,
+            "hybrid": null
+          },
+          "archive_resource": null
+        }
+      },
+      "migrate_legacy_profile": null
     }
-  ]
+  ],
+  "version": 2
 }

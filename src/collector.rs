@@ -70,12 +70,17 @@ impl Store {
             "invalid activation"
         );
         ensure!(
-            !a.classical_history.is_empty()
-                && a.classical_history
+            a.version == 2
+                && !a.profiles.is_empty()
+                && a.profiles
                     .iter()
-                    .chain(&a.hybrid_history)
-                    .all(|h| valid_hash(h)),
-            "invalid key history"
+                    .all(|(name, h)| crate::config::valid_profile(name)
+                        && !h.classical_history.is_empty()
+                        && h.classical_history
+                            .iter()
+                            .chain(&h.hybrid_history)
+                            .all(|p| valid_hash(p))),
+            "invalid version/profile history"
         );
         let mut db = self
             .db
@@ -90,17 +95,67 @@ impl Store {
             )
             .optional()?;
         if let Some(prior) = prior {
-            let prior: Activation = serde_json::from_str(&prior)?;
-            ensure!(a.revision >= prior.revision, "stale policy revision");
-            if a.revision == prior.revision {
-                ensure!(a.policy_hash == prior.policy_hash, "policy revision reused");
+            let body: Value = serde_json::from_str(&prior)?;
+            let (revision, hash, histories) = if body["version"] == 2 {
+                let prior: Activation = serde_json::from_value(body)?;
+                (prior.revision, prior.policy_hash, prior.profiles)
+            } else {
+                let name = a
+                    .migrate_legacy_profile
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("explicit legacy profile mapping required"))?;
+                let old: crate::ledger::History = serde_json::from_value(
+                    json!({"classical_history":body["classical_history"],"hybrid_history":body["hybrid_history"]}),
+                )?;
+                (
+                    body["revision"]
+                        .as_u64()
+                        .ok_or_else(|| anyhow::anyhow!("legacy revision missing"))?,
+                    body["policy_hash"]
+                        .as_str()
+                        .ok_or_else(|| anyhow::anyhow!("legacy hash missing"))?
+                        .to_string(),
+                    std::collections::BTreeMap::from([(name.clone(), old)]),
+                )
+            };
+            ensure!(a.revision >= revision, "stale policy revision");
+            if a.revision == revision {
+                ensure!(
+                    body_version(&prior)? == 2 && a.policy_hash == hash,
+                    "policy revision reused"
+                );
                 return Ok(());
             }
-            ensure!(
-                a.classical_history.starts_with(&prior.classical_history)
-                    && a.hybrid_history.starts_with(&prior.hybrid_history),
-                "lineage regression or fork"
-            );
+            for (name, old) in histories {
+                let new = a
+                    .profiles
+                    .get(&name)
+                    .ok_or_else(|| anyhow::anyhow!("profile history cannot be removed"))?;
+                ensure!(
+                    new.classical_history.starts_with(&old.classical_history)
+                        && new.hybrid_history.starts_with(&old.hybrid_history),
+                    "lineage regression or fork"
+                );
+            }
+            let stale = {
+                let mut q = tx.prepare("SELECT id FROM jobs WHERE repo=?1 AND policy != ?2 AND status IN ('pending','running')")?;
+                q.query_map(params![a.repository_id, a.policy_hash], |r| {
+                    r.get::<_, String>(0)
+                })?
+                .collect::<std::result::Result<Vec<_>, _>>()?
+            };
+            for id in stale {
+                append(
+                    &tx,
+                    &id,
+                    "job.finished",
+                    json!({"status":"rejected","reason":"policy-superseded"}),
+                )?;
+                tx.execute(
+                    "UPDATE jobs SET status='rejected',lease=NULL,lease_until=0 WHERE id=?1",
+                    [id],
+                )?;
+            }
         }
         tx.execute("INSERT INTO policies(repo,revision,hash,body) VALUES(?1,?2,?3,?4) ON CONFLICT(repo) DO UPDATE SET revision=excluded.revision,hash=excluded.hash,body=excluded.body",params![a.repository_id,a.revision,a.policy_hash,serde_json::to_string(a)?])?;
         tx.commit()?;
@@ -108,7 +163,9 @@ impl Store {
     }
     pub fn enqueue(&self, job: &Job) -> Result<()> {
         ensure!(
-            valid_hash(&job.policy_hash)
+            job.version == 2
+                && crate::config::valid_profile(&job.profile)
+                && valid_hash(&job.policy_hash)
                 && job.repository_id > 0
                 && job.run_id > 0
                 && job.attempt > 0
@@ -118,10 +175,11 @@ impl Store {
         );
         ensure!(
             job.id
-                == crate::ledger::job_id(
+                == crate::ledger::profile_job_id(
                     job.repository_id,
                     job.run_id,
                     job.attempt,
+                    &job.profile,
                     &job.policy_hash
                 ),
             "job identifier differs"
@@ -139,6 +197,16 @@ impl Store {
         ensure!(
             active == (job.revision, job.policy_hash.clone()),
             "job uses inactive policy"
+        );
+        let policy_body: String = tx.query_row(
+            "SELECT body FROM policies WHERE repo=?1",
+            [job.repository_id],
+            |r| r.get(0),
+        )?;
+        let policy: Activation = serde_json::from_str(&policy_body)?;
+        ensure!(
+            policy.profiles.contains_key(&job.profile),
+            "profile is not active"
         );
         let existing: Option<String> = tx
             .query_row("SELECT body FROM jobs WHERE id=?1", [&job.id], |r| r.get(0))
@@ -285,6 +353,11 @@ impl Store {
         Ok(json!({"job":serde_json::from_str::<Value>(&body)?,"status":status,"events":events}))
     }
 }
+fn body_version(body: &str) -> Result<u64> {
+    Ok(serde_json::from_str::<Value>(body)?["version"]
+        .as_u64()
+        .unwrap_or(1))
+}
 fn valid_hash(s: &str) -> bool {
     s.len() == 64
         && s.bytes()
@@ -423,6 +496,91 @@ pub fn router(store: Store) -> Router {
 mod tests {
     use super::*;
     #[test]
+    fn explicit_legacy_mapping_preserves_history_and_rejects_stale_jobs() {
+        use crate::ledger::{History, profile_job_id};
+        use std::collections::BTreeMap;
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(
+            &dir.path().join("audit.sqlite"),
+            b"01234567890123456789012345678901",
+        )
+        .unwrap();
+        let old = json!({"repository_id":1,"revision":1,"policy_hash":"a".repeat(64),"classical_history":["b".repeat(64)],"hybrid_history":[]});
+        store
+            .db
+            .lock()
+            .unwrap()
+            .execute(
+                "INSERT INTO policies VALUES(1,1,?1,?2)",
+                params!["a".repeat(64), old.to_string()],
+            )
+            .unwrap();
+        let mut activation = Activation {
+            version: 2,
+            repository_id: 1,
+            revision: 2,
+            policy_hash: "c".repeat(64),
+            profiles: BTreeMap::from([
+                (
+                    "oss".into(),
+                    History {
+                        classical_history: vec!["b".repeat(64)],
+                        hybrid_history: vec![],
+                    },
+                ),
+                (
+                    "google".into(),
+                    History {
+                        classical_history: vec!["d".repeat(64)],
+                        hybrid_history: vec![],
+                    },
+                ),
+            ]),
+            migrate_legacy_profile: None,
+        };
+        assert!(store.activate(&activation).is_err());
+        activation.migrate_legacy_profile = Some("google".into());
+        assert!(store.activate(&activation).is_err());
+        activation.migrate_legacy_profile = Some("oss".into());
+        store.activate(&activation).unwrap();
+        let make = |profile: &str| Job {
+            version: 2,
+            profile: profile.into(),
+            id: profile_job_id(1, 2, 1, profile, &activation.policy_hash),
+            repository_id: 1,
+            run_id: 2,
+            attempt: 1,
+            commit: "e".repeat(40),
+            policy_hash: activation.policy_hash.clone(),
+            revision: 2,
+        };
+        let oss = make("oss");
+        let google = make("google");
+        store.enqueue(&oss).unwrap();
+        store.enqueue(&google).unwrap();
+        store.enqueue(&oss).unwrap();
+        assert_ne!(oss.id, google.id);
+        let claimed = store.claim().unwrap().unwrap();
+        activation.revision = 3;
+        activation.policy_hash = "f".repeat(64);
+        let mut removed = activation.clone();
+        removed.profiles.remove("google");
+        assert!(store.activate(&removed).is_err());
+        let mut reset = activation.clone();
+        reset.profiles.get_mut("google").unwrap().classical_history = vec!["f".repeat(64)];
+        assert!(store.activate(&reset).is_err());
+        store.activate(&activation).unwrap();
+        assert!(
+            store
+                .event(&claimed.job.id, &claimed.lease, "sign.intent", json!({}))
+                .is_err()
+        );
+        assert!(store.enqueue(&oss).is_err());
+        assert!(store.claim().unwrap().is_none());
+        assert_eq!(store.inspect(&oss.id).unwrap()["status"], "rejected");
+        assert_eq!(store.inspect(&google.id).unwrap()["status"], "rejected");
+    }
+    #[test]
     fn expired_leases_recover_and_stop_at_retry_limit() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(
@@ -436,12 +594,21 @@ mod tests {
                 repository_id: 1,
                 revision: 1,
                 policy_hash: hash.clone(),
-                classical_history: vec!["b".repeat(64)],
-                hybrid_history: vec![],
+                version: 2,
+                profiles: std::collections::BTreeMap::from([(
+                    "default".into(),
+                    crate::ledger::History {
+                        classical_history: vec!["b".repeat(64)],
+                        hybrid_history: vec![],
+                    },
+                )]),
+                migrate_legacy_profile: None,
             })
             .unwrap();
         let job = Job {
-            id: crate::ledger::job_id(1, 2, 1, &hash),
+            version: 2,
+            profile: "default".into(),
+            id: crate::ledger::profile_job_id(1, 2, 1, "default", &hash),
             repository_id: 1,
             run_id: 2,
             attempt: 1,
@@ -498,12 +665,21 @@ mod tests {
             repository_id: 1,
             revision: 1,
             policy_hash: hash.clone(),
-            classical_history: vec!["b".repeat(64)],
-            hybrid_history: vec![],
+            version: 2,
+            profiles: std::collections::BTreeMap::from([(
+                "default".into(),
+                crate::ledger::History {
+                    classical_history: vec!["b".repeat(64)],
+                    hybrid_history: vec![],
+                },
+            )]),
+            migrate_legacy_profile: None,
         };
         s.activate(&a).unwrap();
         let job = Job {
-            id: crate::ledger::job_id(1, 2, 1, &hash),
+            version: 2,
+            profile: "default".into(),
+            id: crate::ledger::profile_job_id(1, 2, 1, "default", &hash),
             repository_id: 1,
             run_id: 2,
             attempt: 1,
@@ -526,11 +702,21 @@ mod tests {
         let mut newer = a.clone();
         newer.revision = 2;
         newer.policy_hash = "d".repeat(64);
-        newer.classical_history.push("e".repeat(64));
+        newer
+            .profiles
+            .get_mut("default")
+            .unwrap()
+            .classical_history
+            .push("e".repeat(64));
         s.activate(&newer).unwrap();
         assert!(s.activate(&a).is_err());
         newer.revision = 3;
-        newer.classical_history.remove(0);
+        newer
+            .profiles
+            .get_mut("default")
+            .unwrap()
+            .classical_history
+            .remove(0);
         assert!(s.activate(&newer).is_err());
     }
 }

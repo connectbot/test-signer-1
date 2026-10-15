@@ -11,6 +11,7 @@ pub mod ledger;
 pub mod lineage;
 pub mod manifest;
 pub mod pipeline;
+pub mod receipt;
 pub mod server;
 pub mod transparency;
 pub mod wire;

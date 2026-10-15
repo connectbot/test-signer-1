@@ -15,6 +15,20 @@ mod signature_traits_placeholder {
 use x509_cert::Certificate;
 use zeroize::Zeroizing;
 
+pub fn github_app_key(path: &std::path::Path) -> Result<RsaPrivateKey> {
+    use rsa::pkcs1::DecodeRsaPrivateKey;
+    let bytes = crate::config::read_secret(path)?;
+    let text = std::str::from_utf8(&bytes)?;
+    let key =
+        RsaPrivateKey::from_pkcs8_pem(text).or_else(|_| RsaPrivateKey::from_pkcs1_pem(text))?;
+    ensure!(
+        key.n().bits() >= 2048,
+        "GitHub App RSA key smaller than 2048 bits"
+    );
+    key.validate()?;
+    Ok(key)
+}
+
 pub const RSA_SHA256: u32 = 0x0103;
 pub const RSA_SHA512: u32 = 0x0104;
 pub const ML_DSA: u32 = 0x0501;

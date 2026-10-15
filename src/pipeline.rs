@@ -12,17 +12,31 @@ use std::collections::BTreeMap;
 
 pub async fn activate(loaded: &Loaded, ledger: &Ledger) -> Result<()> {
     for repo in &loaded.config.repositories {
-        let (classical, hybrid) = &loaded.lineages[&repo.id];
+        let profiles = repo
+            .profiles
+            .keys()
+            .map(|name| {
+                let (classical, hybrid) = &loaded.lineages[&(repo.id, name.clone())];
+                (
+                    name.clone(),
+                    crate::ledger::History {
+                        classical_history: classical.fingerprints(),
+                        hybrid_history: hybrid
+                            .as_ref()
+                            .map(|(_, _, e)| e.fingerprints())
+                            .unwrap_or_default(),
+                    },
+                )
+            })
+            .collect();
         ledger
             .activate(&Activation {
+                version: 2,
                 repository_id: repo.id,
                 revision: repo.revision,
                 policy_hash: loaded.policy_hash(repo)?,
-                classical_history: classical.fingerprints(),
-                hybrid_history: hybrid
-                    .as_ref()
-                    .map(|(_, _, e)| e.fingerprints())
-                    .unwrap_or_default(),
+                profiles,
+                migrate_legacy_profile: repo.migrate_legacy_profile.clone(),
             })
             .await?;
     }
@@ -36,6 +50,8 @@ async fn artifact(
     file_name: &str,
     cache: &mut BTreeMap<String, archive::Entries>,
 ) -> Result<(Vec<u8>, Value)> {
+    let artifact_name = artifact_name.replace("{attempt}", &run["run_attempt"].to_string());
+    let artifact_name = artifact_name.as_str();
     let list = github
         .list(
             &format!(
@@ -89,7 +105,7 @@ async fn provenance(
     repo: &Repository,
     job: &Claimed,
     bytes: &[u8],
-) -> Result<Value> {
+) -> Result<(Value, Vec<u8>)> {
     let bundles = github
         .list(
             &format!(
@@ -111,7 +127,50 @@ async fn provenance(
             job.job.run_id,
             job.job.attempt,
         ) {
-            return Ok(result);
+            let caller = result["caller"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("caller missing"))?;
+            github
+                .verify_file_pin(
+                    &repo.name,
+                    repo.id,
+                    caller,
+                    &job.job.commit,
+                    &repo.callers[caller],
+                )
+                .await?;
+            let builder_commit = result["builder_commit"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("builder commit missing"))?;
+            let builder_github = if repo.builder.repository == repo.name {
+                github.clone()
+            } else {
+                Github::connect(&loaded.config)
+                    .await?
+                    .installation_for(&repo.builder.repository, repo.builder.repository_id, false)
+                    .await?
+            };
+            builder_github
+                .verify_file_pin(
+                    &repo.builder.repository,
+                    repo.builder.repository_id,
+                    &repo.builder.workflow,
+                    builder_commit,
+                    &repo.builder.sha256,
+                )
+                .await?;
+            for (path, pins) in &repo.builder.helpers {
+                builder_github
+                    .verify_file_pin(
+                        &repo.builder.repository,
+                        repo.builder.repository_id,
+                        path,
+                        builder_commit,
+                        pins,
+                    )
+                    .await?;
+            }
+            return Ok((result, serde_json::to_vec(&b["bundle"])?));
         }
     }
     anyhow::bail!("no valid attestation satisfies signing policy")
@@ -123,6 +182,14 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         .iter()
         .find(|r| r.id == claim.job.repository_id)
         .ok_or_else(|| anyhow::anyhow!("repository is not allowed"))?;
+    ensure!(
+        claim.job.version == 2,
+        "legacy job requires explicit policy migration"
+    );
+    let artifact_profile = repo
+        .profiles
+        .get(&claim.job.profile)
+        .ok_or_else(|| anyhow::anyhow!("profile is not allowed"))?;
     ensure!(
         claim.job.policy_hash == loaded.policy_hash(repo)? && claim.job.revision == repo.revision,
         "stale signing policy"
@@ -172,7 +239,9 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         ))
         .await?;
     ensure!(
-        workflow["path"] == repo.workflow,
+        workflow["path"]
+            .as_str()
+            .is_some_and(|p| repo.callers.contains_key(p)),
         "workflow differs from policy"
     );
     let mut cache = BTreeMap::new();
@@ -180,8 +249,8 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         &github,
         repo,
         &run,
-        &repo.apk_artifact,
-        &repo.apk_file,
+        &artifact_profile.apk_artifact,
+        &artifact_profile.apk_file,
         &mut cache,
     )
     .await?;
@@ -189,14 +258,14 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         &github,
         repo,
         &run,
-        &repo.aab_artifact,
-        &repo.aab_file,
+        &artifact_profile.aab_artifact,
+        &artifact_profile.aab_file,
         &mut cache,
     )
     .await?;
     drop(cache);
-    let apk_provenance = provenance(&github, loaded, repo, claim, &apk_bytes).await?;
-    let aab_provenance = provenance(&github, loaded, repo, claim, &aab_bytes).await?;
+    let (apk_provenance, apk_bundle) = provenance(&github, loaded, repo, claim, &apk_bytes).await?;
+    let (aab_provenance, aab_bundle) = provenance(&github, loaded, repo, claim, &aab_bytes).await?;
     apk::ensure_unsigned(&apk_bytes)?;
     let mut apk_entries = archive::read_limited(&apk_bytes, github.max_bytes as u64)?;
     let mut aab_entries = archive::read_limited(&aab_bytes, github.max_bytes as u64)?;
@@ -213,8 +282,8 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
     let aab_id = manifest::identity(aab_manifest, true)?;
     let apk_id = manifest::identity(apk_manifest, false)?;
     ensure!(
-        apk_id.package == repo.package
-            && aab_id.package == repo.package
+        apk_id.package == artifact_profile.package
+            && aab_id.package == artifact_profile.package
             && apk_id.version == aab_id.version,
         "package or version differs"
     );
@@ -222,9 +291,10 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         apk_id.min_sdk >= 24 && aab_id.min_sdk >= 24 && !apk_id.shared_uid && !aab_id.shared_uid,
         "unsupported SDK or sharedUserId"
     );
-    let statement = transparency::statement(&aab_entries, repo.archive_resource.as_ref())?;
+    let statement =
+        transparency::statement(&aab_entries, artifact_profile.archive_resource.as_ref())?;
     transparency::check_apk(&statement, &apk_entries)?;
-    let signing = &repo.signing;
+    let signing = &artifact_profile.signing;
     let key = |id: &str| {
         loaded
             .keys
@@ -233,7 +303,7 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
     };
     let transparency_key = key(&signing.transparency_key)?;
     let upload_key = key(&signing.upload_key)?;
-    let (lineage, hybrid_lineages) = &loaded.lineages[&repo.id];
+    let (lineage, hybrid_lineages) = &loaded.lineages[&(repo.id, claim.job.profile.clone())];
     let hybrid = if let (Some(h), Some((c, p, _))) = (&signing.hybrid, hybrid_lineages) {
         Some(apk::Hybrid {
             classical: key(&h.classical_key)?,
@@ -251,7 +321,7 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         rotation_min_sdk: signing.rotation_min_sdk,
         hybrid,
     };
-    ledger.event(claim,"inputs.verified",json!({"apk":apk_provenance,"aab":aab_provenance,"apk_artifact_id":apk_meta["id"],"aab_artifact_id":aab_meta["id"],"package":repo.package,"version_code":apk_id.version})).await?;
+    ledger.event(claim,"inputs.verified",json!({"apk":apk_provenance,"aab":aab_provenance,"apk_artifact_id":apk_meta["id"],"aab_artifact_id":aab_meta["id"],"package":artifact_profile.package,"version_code":apk_id.version})).await?;
     let intent = |operation: &str, k: &crate::crypto::SigningKey| json!({"operation":operation,"key_fingerprint":k.fingerprint(),"policy_hash":claim.job.policy_hash,"lineage_sha256":signing.lineage_sha256,"apk_input_sha256":crate::sha256(&apk_bytes),"aab_input_sha256":crate::sha256(&aab_bytes)});
     ledger
         .event(
@@ -301,7 +371,8 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
     )?;
     transparency::check_apk(&statement, &final_apk)?;
     jar::verify_output(&final_aab, upload_key)?;
-    let final_statement = transparency::statement(&final_aab, repo.archive_resource.as_ref())?;
+    let final_statement =
+        transparency::statement(&final_aab, artifact_profile.archive_resource.as_ref())?;
     ensure!(
         final_statement == statement,
         "AAB code changed during signing"
@@ -322,12 +393,34 @@ pub async fn process(loaded: &Loaded, ledger: &Ledger, claim: &Claimed) -> Resul
         outputs.insert("apk-hybrid-pqc-lineage.bin".into(), p.file()?);
         outputs.insert("apk-effective-lineage.bin".into(), e.file()?);
     }
-    let receipt = json!({"version":1,"job":claim.job,"package":repo.package,"version_code":apk_id.version,"provenance":{"apk":apk_provenance,"aab":aab_provenance},"inputs":{"apk":crate::sha256(&apk_bytes),"aab":crate::sha256(&aab_bytes)},"outputs":outputs.iter().map(|(n,b)|json!({"name":n,"sha256":crate::sha256(b),"bytes":b.len()})).collect::<Vec<_>>(),"keys":{"upload":upload_key.fingerprint(),"transparency":transparency_key.fingerprint(),"original":profile.original.fingerprint(),"classical":profile.current.fingerprint(),"hybrid":profile.hybrid.as_ref().map(|h|json!({"rsa":h.classical.fingerprint(),"pqc":h.pqc.fingerprint()}))},"rotation_min_sdk":signing.rotation_min_sdk,"hybrid_min_sdk":profile.hybrid.as_ref().map(|_|37),"lineage":{"sha256":lineage.digest()?,"certificates":lineage.fingerprints(),"capabilities":lineage.nodes.iter().map(|n|n.flags).collect::<Vec<_>>()}});
+    outputs.insert("unsigned-apk.sigstore.json".into(), apk_bundle);
+    outputs.insert("unsigned-aab.sigstore.json".into(), aab_bundle);
+    let receipt = json!({"version":2,"repository":repo.name,"artifacts":{"apk":apk_meta,"aab":aab_meta},"signer":{"version":env!("CARGO_PKG_VERSION"),"revision":env!("SIGNER_SOURCE_REVISION")},"job":claim.job,"package":artifact_profile.package,"version_code":apk_id.version,"provenance":{"apk":apk_provenance,"aab":aab_provenance},"inputs":{"apk":crate::sha256(&apk_bytes),"aab":crate::sha256(&aab_bytes)},"outputs":outputs.iter().map(|(n,b)|json!({"name":n,"sha256":crate::sha256(b),"bytes":b.len()})).collect::<Vec<_>>(),"keys":{"upload":upload_key.fingerprint(),"transparency":transparency_key.fingerprint(),"original":profile.original.fingerprint(),"classical":profile.current.fingerprint(),"hybrid":profile.hybrid.as_ref().map(|h|json!({"rsa":h.classical.fingerprint(),"pqc":h.pqc.fingerprint()}))},"rotation_min_sdk":signing.rotation_min_sdk,"hybrid_min_sdk":profile.hybrid.as_ref().map(|_|37),"lineage":{"sha256":lineage.digest()?,"certificates":lineage.fingerprints(),"capabilities":lineage.nodes.iter().map(|n|n.flags).collect::<Vec<_>>()}});
     outputs.insert(
         "signing-receipt.json".into(),
         serde_json::to_vec_pretty(&receipt)?,
     );
-    ledger.event(claim, "outputs.verified", receipt).await?;
+    ledger
+        .event(claim, "outputs.verified", receipt.clone())
+        .await?;
+    let receipt_key = key(&repo.receipt_key)?;
+    ledger
+        .event(claim, "sign.intent", intent("receipt-dsse", receipt_key))
+        .await?;
+    let signed_receipt = crate::receipt::sign(&receipt, receipt_key)?;
+    crate::receipt::verify(
+        &signed_receipt,
+        &receipt_key.certificate,
+        &receipt_key.fingerprint(),
+    )?;
+    ledger
+        .event(
+            claim,
+            "sign.result",
+            json!({"operation":"receipt-dsse","sha256":crate::sha256(&signed_receipt)}),
+        )
+        .await?;
+    outputs.insert("signing-receipt.dsse.json".into(), signed_receipt);
     let release = github
         .release(repo, &claim.job.id, &claim.job.commit)
         .await?;

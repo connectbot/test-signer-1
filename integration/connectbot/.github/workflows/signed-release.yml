@@ -1,0 +1,19 @@
+name: Finalize signed Android release
+on:
+  workflow_run:
+    workflows: [Continuous Integration, Continuous Integration (tags)]
+    types: [completed]
+permissions:
+  contents: read
+jobs:
+  finalize:
+    if: ${{ vars.ANDROID_SIGNER_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.id == github.event.repository.id }}
+    uses: ./.github/workflows/release-attest.yml
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    with:
+      source_run: ${{ github.event.workflow_run.id }}
+      source_attempt: ${{ github.event.workflow_run.run_attempt }}

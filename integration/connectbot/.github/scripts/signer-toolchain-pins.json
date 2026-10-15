@@ -1,0 +1,15 @@
+{
+  "rust_version": "1.99.0",
+  "hermit_kernel_toolchain": "nightly-2026-02-01",
+  "hermit_std_url": "https://github.com/hermit-os/rust-std-hermit/releases/download/1.99.0/rust-std-1.99.0-x86_64-unknown-hermit.tar.gz",
+  "hermit_std_sha256": "a1fb9387e9cd18fabaa068d3829f3352b906ff592be92a30ec8786da83e0d900",
+  "loader_url": "https://github.com/hermit-os/loader/releases/download/v0.5.7/hermit-loader-x86_64-multiboot",
+  "loader_sha256": "c31a2b499a5c073b3de17ef1d26b60ac9a41986a6d17d8d73c4b4ce0c15dc345",
+  "apksig_source_url": "https://android.googlesource.com/platform/tools/apksig/+archive/refs/tags/android-17.0.0_r1.tar.gz",
+  "apksig_source_sha256": "c41ab4e043cd636cb59b76516f8c78006285fb7b96f48a636bb1cade4457f7ec",
+  "sigstore_revision": "f950b1b683560aadf7737539f8d7eaa656a9f0c0",
+  "apksig_legacy_url": "https://dl.google.com/dl/android/maven2/com/android/tools/build/apksig/9.4.1/apksig-9.4.1.jar",
+  "apksig_legacy_sha256": "7ae2e5980c77d853e3513074ee7c822bbdcdcde1668889d17faa7fe8bc8aa821",
+  "bundletool_url": "https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar",
+  "bundletool_sha256": "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29"
+}

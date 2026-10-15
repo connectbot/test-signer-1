@@ -1,0 +1,139 @@
+{
+  "listen": "0.0.0.0:443",
+  "tls_certificate": "/root/tls.pem",
+  "tls_private_key": "/root/tls.pk8",
+  "github_app_id": 12345,
+  "github_app_private_key": "/root/github-app.pem",
+  "webhook_secret": "/root/webhook-secret",
+  "audit_url": "https://audit.example.net:8443",
+  "audit_token": "/root/audit-token",
+  "audit_ca_certificate": "/root/audit-ca.pem",
+  "max_artifact_bytes": 134217728,
+  "max_lineage_bytes": 1048576,
+  "keys": {
+    "apk-a": {
+      "private_key": "/root/apk-a.pk8",
+      "certificate": "/root/apk-a.pem",
+      "fingerprint": "REPLACE_WITH_CERTIFICATE_DER_SHA256"
+    },
+    "upload": {
+      "private_key": "/root/upload.pk8",
+      "certificate": "/root/upload.pem",
+      "fingerprint": "REPLACE_WITH_CERTIFICATE_DER_SHA256"
+    },
+    "transparency": {
+      "private_key": "/root/transparency.pk8",
+      "certificate": "/root/transparency.pem",
+      "fingerprint": "REPLACE_WITH_CERTIFICATE_DER_SHA256"
+    },
+    "receipt": {
+      "private_key": "/root/receipt.pk8",
+      "certificate": "/root/receipt.pem",
+      "fingerprint": "REPLACE_WITH_CERTIFICATE_DER_SHA256"
+    }
+  },
+  "trust_roots": {
+    "public": {
+      "file": "/root/sigstore-public.json",
+      "sha256": "REPLACE_WITH_SHA256",
+      "valid_until": 0
+    },
+    "private": {
+      "file": "/root/sigstore-github.json",
+      "sha256": "REPLACE_WITH_SHA256",
+      "valid_until": 0
+    }
+  },
+  "repositories": [
+    {
+      "id": 123235,
+      "name": "connectbot/connectbot",
+      "refs": [
+        "refs/heads/main",
+        "refs/tags/v*"
+      ],
+      "events": [
+        "push"
+      ],
+      "runners": [
+        "github-hosted"
+      ],
+      "visibility": "public",
+      "revision": 1,
+      "callers": {
+        ".github/workflows/ci.yml": [
+          "81408425a308c9358dfb1be1dd3a4982aed1fd45d6bb9b5593d96550b8cace45"
+        ],
+        ".github/workflows/ci-tags.yml": [
+          "772aa98fb743949d47dbbbb38a2a3f4bc2fde31b0fd331d0fba2eebe097abd21"
+        ]
+      },
+      "builder": {
+        "repository": "connectbot/connectbot",
+        "repository_id": 123235,
+        "workflow": ".github/workflows/ci-build.yml",
+        "refs": [
+          "refs/heads/main",
+          "refs/tags/v*"
+        ],
+        "sha256": [
+          "88634a70bbfb85d07d79a81f90f3e399e7163bd0ea92215874b6ce1a80d578e3"
+        ],
+        "helpers": {}
+      },
+      "receipt_key": "receipt",
+      "profiles": {
+        "oss": {
+          "package": "org.connectbot",
+          "apk_artifact": "unsigned-oss-{attempt}",
+          "aab_artifact": "unsigned-oss-{attempt}",
+          "apk_file": "app.apk",
+          "aab_file": "app.aab",
+          "signing": {
+            "original_key": "apk-a",
+            "current_key": "apk-a",
+            "upload_key": "upload",
+            "transparency_key": "transparency",
+            "lineage": "/root/apk-lineage.bin",
+            "lineage_sha256": "REPLACE_WITH_SHA256",
+            "rotation_min_sdk": 33,
+            "allow_rollback": false,
+            "hybrid": null
+          },
+          "archive_resource": {
+            "bundletool_version": "1.18.3",
+            "resource_path": "/com/android/tools/build/bundletool/archive/dex/1_16_0/classes.dex",
+            "sha256": "640d7452108a970d7801be7cd0059439df5b83f20a9159bb6e87297dc368a9b8",
+            "file": "/root/archive-classes.dex"
+          }
+        },
+        "google": {
+          "package": "org.connectbot",
+          "apk_artifact": "unsigned-google-{attempt}",
+          "aab_artifact": "unsigned-google-{attempt}",
+          "apk_file": "app.apk",
+          "aab_file": "app.aab",
+          "signing": {
+            "original_key": "apk-a",
+            "current_key": "apk-a",
+            "upload_key": "upload",
+            "transparency_key": "transparency",
+            "lineage": "/root/apk-lineage.bin",
+            "lineage_sha256": "REPLACE_WITH_SHA256",
+            "rotation_min_sdk": 33,
+            "allow_rollback": false,
+            "hybrid": null
+          },
+          "archive_resource": {
+            "bundletool_version": "1.18.3",
+            "resource_path": "/com/android/tools/build/bundletool/archive/dex/1_16_0/classes.dex",
+            "sha256": "640d7452108a970d7801be7cd0059439df5b83f20a9159bb6e87297dc368a9b8",
+            "file": "/root/archive-classes.dex"
+          }
+        }
+      },
+      "migrate_legacy_profile": null
+    }
+  ],
+  "version": 2
+}

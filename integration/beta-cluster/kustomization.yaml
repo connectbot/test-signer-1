@@ -1,0 +1,18 @@
+---
+# yaml-language-server: $schema=https://json.schemastore.org/kustomization
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - codepoint-web.yaml
+  - moo-codepoint-web.yaml
+  - frigate-web.yaml
+  - house-web.yaml
+  - jenkins-web.yaml
+  - mc-web.yaml
+  - mc-map.yaml
+  - mc-game-dns.yaml
+  - mirror-web.yaml
+  - zabbix-web.yaml
+  - securitypolicy.yaml
+  - k3os-passthrough.yaml
+  - android-signer.yaml

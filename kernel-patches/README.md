@@ -21,6 +21,10 @@ the old fallback warning.
 - Scheduler wake: ignore a second wake notification for a task already made ready
   by its timer. The futex registration may remain briefly after timer expiry;
   the original assumed the task still appeared in the blocked queue and panicked.
+- VirtIO network MTU: add the Ethernet header to receive/transmit buffer sizes
+  and smoltcp's Ethernet frame limit. VirtIO advertises the IP MTU; smoltcp's
+  Ethernet device limit includes the 14-byte link header. The original dropped
+  packets above 8986 bytes with an advertised IP MTU of 9000.
 
 These fixes were exercised with a real Hermit guest under QEMU TCG, including an
 external collector outage without extra traffic to wake the guest. The negative

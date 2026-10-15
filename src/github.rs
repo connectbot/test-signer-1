@@ -1,11 +1,7 @@
-use crate::config::{Config, Repository, now, read_secret};
+use crate::config::{Config, Repository, now};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use rsa::{
-    pkcs1::DecodeRsaPrivateKey,
-    pkcs8::DecodePrivateKey,
-    signature::{RandomizedSigner, SignatureEncoding},
-};
+use rsa::signature::{RandomizedSigner, SignatureEncoding};
 use serde_json::{Value, json};
 use sha2::Sha256;
 #[derive(Clone)]
@@ -53,10 +49,7 @@ impl Github {
             .timeout(std::time::Duration::from_secs(300))
             .user_agent("hermit-android-signer/0.1")
             .build()?;
-        let pem = read_secret(&config.github_app_private_key)?;
-        let text = std::str::from_utf8(&pem)?;
-        let key = rsa::RsaPrivateKey::from_pkcs8_pem(text)
-            .or_else(|_| rsa::RsaPrivateKey::from_pkcs1_pem(text))?;
+        let key = crate::crypto::github_app_key(&config.github_app_private_key)?;
         let issued = now()?;
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","typ":"JWT"}"#);
         let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(
@@ -89,20 +82,83 @@ impl Github {
             &bounded(response, 8 * 1024 * 1024).await?,
         )?)
     }
-    pub async fn installation(mut self, repo: &Repository) -> Result<Self> {
+    pub async fn installation(self, repo: &Repository) -> Result<Self> {
+        self.installation_for(&repo.name, repo.id, true).await
+    }
+    pub async fn installation_for(
+        mut self,
+        repository: &str,
+        repository_id: u64,
+        write_outputs: bool,
+    ) -> Result<Self> {
         let info = self
-            .get(&format!("/repos/{}/installation", repo.name))
+            .get(&format!("/repos/{}/installation", repository))
             .await?;
         let id = info["id"]
             .as_u64()
             .ok_or_else(|| anyhow::anyhow!("installation missing"))?;
-        let response=self.request(reqwest::Method::POST,&format!("/app/installations/{id}/access_tokens"))?.json(&json!({"repository_ids":[repo.id],"permissions":{"actions":"read","attestations":"read","contents":"write"}})).send().await?;
+        let permissions = if write_outputs {
+            json!({"actions":"read","attestations":"read","contents":"write"})
+        } else {
+            json!({"contents":"read"})
+        };
+        let response = self
+            .request(
+                reqwest::Method::POST,
+                &format!("/app/installations/{id}/access_tokens"),
+            )?
+            .json(&json!({"repository_ids":[repository_id],"permissions":permissions}))
+            .send()
+            .await?;
         let body: Value = serde_json::from_slice(&bounded(response, 1024 * 1024).await?)?;
         self.token = body["token"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("installation token missing"))?
             .to_string();
         Ok(self)
+    }
+    pub async fn verify_file_pin(
+        &self,
+        repository: &str,
+        repository_id: u64,
+        path: &str,
+        commit: &str,
+        pins: &[String],
+    ) -> Result<()> {
+        use base64::engine::general_purpose::STANDARD;
+        ensure!(
+            crate::config::safe_path(path)
+                && commit.len() == 40
+                && commit.bytes().all(|b| b.is_ascii_hexdigit()),
+            "invalid pinned file locator"
+        );
+        let metadata = self.get(&format!("/repos/{repository}")).await?;
+        ensure!(
+            metadata["id"].as_u64() == Some(repository_id),
+            "pinned repository identity differs"
+        );
+        let response = self
+            .request(
+                reqwest::Method::GET,
+                &format!("/repos/{repository}/contents/{path}"),
+            )?
+            .query(&[("ref", commit)])
+            .send()
+            .await?;
+        let file: Value = serde_json::from_slice(&bounded(response, 2 * 1024 * 1024).await?)?;
+        ensure!(
+            file["type"] == "file" && file["encoding"] == "base64" && file["path"] == path,
+            "pinned file missing or not regular"
+        );
+        let encoded = file["content"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("pinned file content missing"))?;
+        let content = STANDARD.decode(encoded.replace(['\n', '\r'], ""))?;
+        ensure!(
+            pins.contains(&crate::sha256(&content)),
+            "workflow/helper contents are not approved"
+        );
+        Ok(())
     }
     pub async fn list(&self, path: &str, field: Option<&str>) -> Result<Vec<Value>> {
         let mut all = vec![];

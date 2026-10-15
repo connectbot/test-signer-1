@@ -5,6 +5,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 p = argparse.ArgumentParser()
 p.add_argument("--loader", required=True, type=pathlib.Path)
 p.add_argument("--tcg", action="store_true")
+p.add_argument("--image", type=pathlib.Path, default=ROOT/"target/x86_64-unknown-hermit/release/signer")
 p.add_argument("--gdb-port", type=int)
 a = p.parse_args()
 request_timeout=600 if a.gdb_port else 45
@@ -13,7 +14,7 @@ def run(args):
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 with tempfile.TemporaryDirectory(prefix="android-signer-smoke-") as temporary:
     d=pathlib.Path(temporary); secret=d/"secrets";secret.mkdir(mode=0o700)
-    for name in ["app", "apk", "upload", "transparency", "ca", "tls"]:
+    for name in ["app", "apk", "upload", "transparency", "receipt", "ca", "tls"]:
         run(["openssl","genpkey","-algorithm","RSA","-pkeyopt","rsa_keygen_bits:2048","-out",secret/(name+".key.pem")])
         args=["openssl","req","-new","-x509","-key",secret/(name+".key.pem"),"-out",secret/(name+".pem"),"-days","2","-subj","/CN=Local-test-"+name]
         if name=="ca": args += ["-addext","basicConstraints=critical,CA:TRUE"]
@@ -28,10 +29,18 @@ with tempfile.TemporaryDirectory(prefix="android-signer-smoke-") as temporary:
     run([ROOT/"target/debug/signer-admin","init","--key",secret/"apk.key.pem","--cert",secret/"apk.pem","--out",secret/"lineage.bin"])
     root=ROOT/"tests/fixtures/public-trusted-root.json";(secret/"public-root.json").write_bytes(root.read_bytes())
     keys={}
-    for name in ["apk","upload","transparency"]:
+    for name in ["apk","upload","transparency","receipt"]:
         der=ssl.PEM_cert_to_DER_cert((secret/(name+".pem")).read_text())
         keys[name]={"private_key":"/root/"+name+".key.pem","certificate":"/root/"+name+".pem","fingerprint":hashlib.sha256(der).hexdigest()}
     config={"listen":"0.0.0.0:8443","tls_certificate":"/root/tls.pem","tls_private_key":"/root/tls.key.pem","github_app_id":1,"github_app_private_key":"/root/app.key.pem","webhook_secret":"/root/webhook-secret","audit_url":"https://10.0.2.2:18443","audit_token":"/root/audit-token","audit_ca_certificate":"/root/ca.pem","keys":keys,"trust_roots":{"public":{"file":"/root/public-root.json","sha256":sha(root),"valid_until":int(time.time())+3600}},"repositories":[{"id":1,"name":"example/test","workflow":".github/workflows/build.yml","refs":["refs/heads/main"],"events":["push"],"runners":["github-hosted"],"visibility":"public","package":"test.example","apk_artifact":"unsigned-apk","aab_artifact":"unsigned-aab","apk_file":"app.apk","aab_file":"app.aab","revision":1,"archive_resource":None,"signing":{"original_key":"apk","current_key":"apk","upload_key":"upload","transparency_key":"transparency","lineage":"/root/lineage.bin","lineage_sha256":sha(secret/"lineage.bin"),"hybrid":None}}]}
+    repo=config["repositories"][0]
+    workflow=repo.pop("workflow")
+    repo["callers"]={workflow:["a"*64]}
+    repo["builder"]={"repository":repo["name"],"repository_id":repo["id"],"workflow":workflow,"refs":repo["refs"],"sha256":["a"*64],"helpers":{}}
+    repo["receipt_key"]="receipt"
+    repo["profiles"]={"default":{field:repo.pop(field) for field in ["package","apk_artifact","aab_artifact","apk_file","aab_file","signing","archive_resource"]}}
+    repo["migrate_legacy_profile"]=None
+    config["version"]=2
     (secret/"config.json").write_text(json.dumps(config))
     collector={"listen":"0.0.0.0:18443","tls_certificate":str(secret/"tls.pem"),"tls_private_key":str(secret/"tls.key.pem"),"token_file":str(secret/"audit-token"),"database":str(d/"audit.sqlite")}
     collector_file=d/"collector.json";collector_file.write_text(json.dumps(collector))
@@ -42,7 +51,7 @@ with tempfile.TemporaryDirectory(prefix="android-signer-smoke-") as temporary:
             processes.append(subprocess.Popen([ROOT/"target/debug/audit-collector"],env={**os.environ,"AUDIT_CONFIG":str(collector_file)},stdout=log,stderr=log,start_new_session=True))
         guest_log=d/"guest.log"
         with guest_log.open("w") as log:
-            args=["python3",ROOT/"scripts/run-qemu.py","--secrets",secret,"--loader",a.loader,"--port","18444","--memory","1G","--test-unsandboxed-fs"]
+            args=["python3",ROOT/"scripts/run-qemu.py","--secrets",secret,"--loader",a.loader,"--image",a.image,"--port","18444","--memory","1G","--test-unsandboxed-fs"]
             if a.tcg: args.append("--tcg")
             if a.gdb_port: args += ["--gdb-port",str(a.gdb_port)]
             processes.append(subprocess.Popen([str(x) for x in args],stdout=log,stderr=log,start_new_session=True))

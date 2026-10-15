@@ -8,6 +8,10 @@ use serde_json::Value;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Job {
+    #[serde(default = "legacy_version")]
+    pub version: u32,
+    #[serde(default = "legacy_profile")]
+    pub profile: String,
     pub id: String,
     pub repository_id: u64,
     pub run_id: u64,
@@ -22,8 +26,9 @@ pub struct Activation {
     pub repository_id: u64,
     pub revision: u64,
     pub policy_hash: String,
-    pub classical_history: Vec<String>,
-    pub hybrid_history: Vec<String>,
+    pub version: u32,
+    pub profiles: std::collections::BTreeMap<String, History>,
+    pub migrate_legacy_profile: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -113,4 +118,26 @@ impl Ledger {
 }
 pub fn job_id(repository: u64, run: u64, attempt: u64, policy: &str) -> String {
     format!("{repository}-{run}-{attempt}-{policy}")
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct History {
+    pub classical_history: Vec<String>,
+    pub hybrid_history: Vec<String>,
+}
+fn legacy_version() -> u32 {
+    1
+}
+fn legacy_profile() -> String {
+    "legacy".into()
+}
+pub fn profile_job_id(
+    repository: u64,
+    run: u64,
+    attempt: u64,
+    profile: &str,
+    policy: &str,
+) -> String {
+    format!("v2-{repository}-{run}-{attempt}-{profile}-{policy}")
 }

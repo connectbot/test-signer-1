@@ -1,0 +1,109 @@
+---
+# yaml-language-server: $schema=https://kubernetesjsonschema.dev/v1.34.0/configmap-v1.json
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: android-signer-ca
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIEMzCCApugAwIBAgIUJcFbVxIO3TSYImsRWj8uuUdBHXswDQYJKoZIhvcNAQEL
+    BQAwITEfMB0GA1UEAwwWQW5kcm9pZC1zaWduZXItdGVzdC1DQTAeFw0yNjEwMTUx
+    NjA2MThaFw0yNzEwMTUxNjA2MThaMCExHzAdBgNVBAMMFkFuZHJvaWQtc2lnbmVy
+    LXRlc3QtQ0EwggGiMA0GCSqGSIb3DQEBAQUAA4IBjwAwggGKAoIBgQC2D5o/2DOc
+    x09H9kQ1BVMHFdF/fLSLj3MJzfG/c/K6fPxNym+2D2+HtQWTihGLp1cmlZ5oztg1
+    KwePrmO9PmgquGI5SaGa+dIwLrT/tJhf1tddgvLq6/7YozGUEZp3rWnyime3yGtX
+    OQcUAGvP37rYrL6vpK9xi3ZAiwxj5OpEKruDmXRnp8oxx22uIwbi8NTE0JsiB9pl
+    rX5WFljeB+Y32HnwoemalpxN8+LvVpq5zmoU1Sq2e+HGlOJQ5uRyj4VM9fkI78gA
+    p9ltVnuSnbXTsfY8xRxXblrVR7UQ5PWuz7AEf2JcOul5ildK+FI42XKWpfvyHxDC
+    5jsUawY0KBBgAN5a2PdtH3YlK7hIhKU1VenljSNkdRU9VQ/zEs1r1moY0Y+srWGT
+    mUyqQeqJNtkiDlYmOG5rrJhP4DwjCgx8gzZo8Yg/yzbuTKs7CMMNv6+oJrApPw2P
+    be7fDqaW9hU9PhIs36B65aVXZR/3UEARRo4hSL2jabShojoo3R0Fc68CAwEAAaNj
+    MGEwHQYDVR0OBBYEFCANH/6sqLZNDDXuxj76LbhaVcZLMB8GA1UdIwQYMBaAFCAN
+    H/6sqLZNDDXuxj76LbhaVcZLMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQD
+    AgEGMA0GCSqGSIb3DQEBCwUAA4IBgQB+9jL0ZOcmees+fe5eOuv5YkwnP2GRPiyQ
+    BS0INqUfkIQMxSSd4Pmi09FraKlCw6JhESs5eR0HTC1rjE4EGMM4f61vBg0QqDR/
+    1uAbhiYzDxlW4pcb/qlCgEx/m4iZFmGY5+CW3aZc4pJjG2SjjBH2zKYp3UOHkME4
+    5vGWhZCycfIyk58tA1iey7LXYJqm/jCAbwaIX2+NZiLHLy/00ZCA4FWLrCjqyywm
+    8hOVG64EMlX9w3TOBm+Fer4XZ/4tox8whNX4tdHODmmaEl6q97SMRens1B90CwRI
+    j0veuWLovEE3DQS9B4ftpYgY5NjpKS3VBodcWzCOSQbnmjCV4cLVEQfKtL5KJgZx
+    AOjJeYEmiNKuoL/kj1pjUdkFVGuUdyQUBBSrH9YMl/a0fMZvw1wS7/FcOgVspVjI
+    IlkceR0h70SDFgI3/CjwPFnVzlOpPQuV+3KKf8Gr3SA0C8xFwr0goXgTmWLz1FIQ
+    hsxkWeRO0VLAC1me7VuNVN5osj48AXg=
+    -----END CERTIFICATE-----
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.envoyproxy.io/backend_v1alpha1.json
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: Backend
+metadata:
+  name: android-signer-backend
+spec:
+  endpoints:
+    - fqdn:
+        hostname: ${ANDROID_SIGNER_BACKEND_HOST}
+        port: 443
+  tls:
+    sni: android-signer.internal
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: android-signer-ca
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.networking.k8s.io/httproute_v1.json
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: android-signer-webhook
+  annotations:
+    gatus.home-operations.com/enabled: 'false'
+spec:
+  parentRefs:
+    - name: envoy-external
+      namespace: network
+      sectionName: https
+  hostnames:
+    - signer.${SECRET_DOMAIN}
+  rules:
+    - matches:
+        - method: POST
+          path:
+            type: Exact
+            value: /webhooks/github
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: android-signer-backend
+          port: 443
+---
+# yaml-language-server: $schema=https://kubernetes-schemas.pages.dev/gateway.networking.k8s.io/httproute_v1.json
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: android-signer-internal
+  annotations:
+    external-dns.kubernetes.io/controller: none
+    gatus.home-operations.com/enabled: 'false'
+spec:
+  parentRefs:
+    - name: envoy-internal
+      namespace: network
+      sectionName: https
+  hostnames:
+    - signer.${SECRET_DOMAIN}
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: /healthz
+        - path:
+            type: Exact
+            value: /readyz
+        - method: POST
+          path:
+            type: Exact
+            value: /webhooks/github
+      backendRefs:
+        - group: gateway.envoyproxy.io
+          kind: Backend
+          name: android-signer-backend
+          port: 443

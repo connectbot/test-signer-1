@@ -11,6 +11,9 @@ public class Reference {
    SigningCertificateLineage lineage = SigningCertificateLineage.readFromFile(new File(args[1]));
    int count = lineage.getCertificatesInLineage().size();
    System.out.println("lineage certificates=" + count);
+   java.util.ArrayList<String> fingerprints = new java.util.ArrayList<>();
+   for (var cert : lineage.getCertificatesInLineage()) fingerprints.add(fingerprint(cert));
+   if (args.length > 3 && !String.join(",", fingerprints).equals(args[3])) throw new AssertionError("Unexpected lineage certificates");
    if (args.length > 2 && count != Integer.parseInt(args[2])) throw new AssertionError("Unexpected lineage length");
    return;
   }

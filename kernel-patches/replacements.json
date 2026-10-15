@@ -44,5 +44,20 @@
     "file": "src/scheduler/mod.rs",
     "before": "\t\t\t\tlet task = self.blocked_tasks.custom_wakeup(task);\n\t\t\t\tself.ready_queue.push(task);",
     "after": "\t\t\t\tif let Some(task) = self.blocked_tasks.custom_wakeup(task) {\n\t\t\t\t\tself.ready_queue.push(task);\n\t\t\t\t}"
+  },
+  {
+    "file": "src/drivers/net/virtio/mod.rs",
+    "before": "let mut min_buf_size = determine_mtu(dev_cfg).into();",
+    "after": "// VirtIO reports IP MTU; the receive payload includes the Ethernet header.\n\tlet mut min_buf_size = u32::from(determine_mtu(dev_cfg)) + ETHERNET_HEADER_LEN as u32;"
+  },
+  {
+    "file": "src/drivers/net/virtio/mod.rs",
+    "before": "buf_size: determine_mtu(dev_cfg).into(),",
+    "after": "buf_size: u32::from(determine_mtu(dev_cfg)) + ETHERNET_HEADER_LEN as u32,"
+  },
+  {
+    "file": "src/drivers/net/virtio/mod.rs",
+    "before": "device_capabilities.max_transmission_unit = self.inner.mtu.into();",
+    "after": "// smoltcp Ethernet capabilities include the link header, unlike VirtIO MTU.\n\t\tdevice_capabilities.max_transmission_unit = usize::from(self.inner.mtu) + ETHERNET_HEADER_LEN;"
   }
 ]

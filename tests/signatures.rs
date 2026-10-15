@@ -485,3 +485,68 @@ fn bundletool_verifies_native_transparency_and_bundle_signature() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn receipt_dsse_is_authenticated_and_domain_separated() {
+    let key = key("a");
+    let receipt = serde_json::json!({"version":2,"job":{"profile":"oss","run_id":42},"inputs":{"apk":"a".repeat(64)},"outputs":[{"name":"app-signed.apk","sha256":"b".repeat(64),"bytes":123}]});
+    let envelope = android_signer::receipt::sign(&receipt, &key).unwrap();
+    assert_eq!(
+        android_signer::receipt::verify(&envelope, &key.certificate, &key.fingerprint()).unwrap(),
+        receipt
+    );
+    let other = self::key("b");
+    assert!(
+        android_signer::receipt::verify(&envelope, &other.certificate, &other.fingerprint())
+            .is_err()
+    );
+    let mut altered: serde_json::Value = serde_json::from_slice(&envelope).unwrap();
+    altered["payloadType"] = serde_json::json!("application/json");
+    assert!(
+        android_signer::receipt::verify(
+            &serde_json::to_vec(&altered).unwrap(),
+            &key.certificate,
+            &key.fingerprint()
+        )
+        .is_err()
+    );
+    use base64::Engine;
+    let mut altered: serde_json::Value = serde_json::from_slice(&envelope).unwrap();
+    altered["payload"] = serde_json::json!(base64::engine::general_purpose::STANDARD.encode(b"{}"));
+    assert!(
+        android_signer::receipt::verify(
+            &serde_json::to_vec(&altered).unwrap(),
+            &key.certificate,
+            &key.fingerprint()
+        )
+        .is_err()
+    );
+    altered["signatures"][0]["keyid"] = serde_json::json!(other.fingerprint());
+    assert!(
+        android_signer::receipt::verify(
+            &serde_json::to_vec(&altered).unwrap(),
+            &key.certificate,
+            &key.fingerprint()
+        )
+        .is_err()
+    );
+    // Ordinary RSA signatures over JSON cannot be substituted for DSSE PAE.
+    let mut altered: serde_json::Value = serde_json::from_slice(&envelope).unwrap();
+    let payload = base64::engine::general_purpose::STANDARD
+        .decode(altered["payload"].as_str().unwrap())
+        .unwrap();
+    altered["signatures"][0]["sig"] = serde_json::json!(
+        base64::engine::general_purpose::STANDARD.encode(
+            key.sign(android_signer::crypto::RSA_SHA256, &payload)
+                .unwrap()
+        )
+    );
+    assert!(
+        android_signer::receipt::verify(
+            &serde_json::to_vec(&altered).unwrap(),
+            &key.certificate,
+            &key.fingerprint()
+        )
+        .is_err()
+    );
+}

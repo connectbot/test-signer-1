@@ -77,8 +77,6 @@ jobs:
       pull-requests: write
       id-token: write
       attestations: write
-    with:
-      is_push: false
     secrets: inherit
 
   required:

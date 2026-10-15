@@ -1,0 +1,5 @@
+{
+  "version": 2,
+  "deployment_configured": false,
+  "reason": "Export a public policy with signer-admin export-release-policy after provisioning the test appliance."
+}

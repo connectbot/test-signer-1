@@ -8,6 +8,6 @@ with a Recreate update strategy because the ledger uses SQLite.
 
 The ConnectBot integration test runs this service in beta-cluster's `security`
 namespace through the app-template chart. Flux keeps its credentials encrypted
-with SOPS. The internal Envoy gateway verifies the collector's backend TLS;
+with SOPS. The private `envoy-dmz` gateway (`10.200.0.7:443`) verifies backend TLS;
 the API additionally requires its bearer token on every endpoint. APK signing
 keys remain in the Hermit appliance, outside the collector.

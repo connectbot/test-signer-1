@@ -5,5 +5,6 @@
   "src/executor/mod.rs": "6a3737a2c6c12967b12ffc329a40400a095941b3bd0328cacbf249754f0a4dcd",
   "src/scheduler/task/mod.rs": "6e10bc7d94d2cae86b6106c727b3fa427fef5433339b55f3d4eec9b7150d62b6",
   "src/scheduler/mod.rs": "3b96e6c9cd9e0f77f8ba31602aa508fa5c0c110dfd57067edf5db069b5b87d21",
-  "src/drivers/net/virtio/mod.rs": "a8a9bb2d14f1aa0f89c530e0b10d96c82b65c0b9559852c43bd0683df1b5eb93"
+  "src/drivers/net/virtio/mod.rs": "a8a9bb2d14f1aa0f89c530e0b10d96c82b65c0b9559852c43bd0683df1b5eb93",
+  "src/syscalls/socket/addrinfo.rs": "f0a977d2e74e2a889ed0dccb832e7069b48becfb42de63496a0ccab5f97c373c"
 }

@@ -59,5 +59,15 @@
     "file": "src/drivers/net/virtio/mod.rs",
     "before": "device_capabilities.max_transmission_unit = self.inner.mtu.into();",
     "after": "// smoltcp Ethernet capabilities include the link header, unlike VirtIO MTU.\n\t\tdevice_capabilities.max_transmission_unit = usize::from(self.inner.mtu) + ETHERNET_HEADER_LEN;"
+  },
+  {
+    "file": "src/syscalls/socket/addrinfo.rs",
+    "before": "let ipv6_results = try_io!(ipv6_results.transpose()).unwrap_or_default();",
+    "after": "// An absent AAAA record must not prevent an IPv4 or mapped fallback.\n\tlet ipv6_results = if want_ipv4 || ai_flags.contains(Ai::V4MAPPED) {\n\t\tipv6_results.transpose().unwrap_or_default().unwrap_or_default()\n\t} else {\n\t\ttry_io!(ipv6_results.transpose()).unwrap_or_default()\n\t};"
+  },
+  {
+    "file": "src/syscalls/socket/addrinfo.rs",
+    "before": "let ipv4_results = try_io!(ipv4_results.transpose()).unwrap_or_default();",
+    "after": "// Likewise, keep usable IPv6 results if the A query fails.\n\tlet ipv4_results = if !ipv6_results.is_empty() {\n\t\tipv4_results.transpose().unwrap_or_default().unwrap_or_default()\n\t} else {\n\t\ttry_io!(ipv4_results.transpose()).unwrap_or_default()\n\t};"
   }
 ]

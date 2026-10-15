@@ -162,7 +162,8 @@ Keep its local registration output out of source control.
 
 The test collector runs separately in beta-cluster using the app-template chart,
 a persistent SQLite volume, Recreate updates and VolSync backup integration.
-Its internal endpoint is `https://signer-audit.their.net`; Envoy validates
+Its private endpoint is `https://signer-audit.their.net`, through `envoy-dmz`
+at `10.200.0.7:443`; Envoy validates
 backend TLS and the collector requires its bearer token. Flux stores its TLS
 key and token encrypted with SOPS. See `deploy/collector/` for the container.
 

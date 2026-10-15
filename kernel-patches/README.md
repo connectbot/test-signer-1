@@ -25,6 +25,10 @@ the old fallback warning.
   and smoltcp's Ethernet frame limit. VirtIO advertises the IP MTU; smoltcp's
   Ethernet device limit includes the 14-byte link header. The original dropped
   packets above 8986 bytes with an advertised IP MTU of 9000.
+- DNS: preserve a usable address family when the other family has no record.
+  Upstream returned immediately after an unsuccessful AAAA lookup, so IPv4-only
+  names never reached their A lookup. The live VM's DNS packet capture confirmed
+  this failure against the auditor; single-family lookup failures still fail.
 
 These fixes were exercised with a real Hermit guest under QEMU TCG, including an
 external collector outage without extra traffic to wake the guest. The negative

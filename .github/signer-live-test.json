@@ -1,5 +1,5 @@
 {
-  "batch": "20261015-five-live-flows",
-  "iteration": 5,
-  "purpose": "Disposable live signing-flow test"
+  "batch": "network-fixes-five-live-flows",
+  "iteration": 1,
+  "purpose": "Disposable live signing-flow comparison"
 }

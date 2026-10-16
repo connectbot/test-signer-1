@@ -182,9 +182,15 @@ jobs:
           mkdir support
           cp "app/build/outputs/native-debug-symbols/${FLAVOR}Release/native-debug-symbols.zip" support/
           cp "app/build/outputs/mapping/${FLAVOR}Release/mapping.txt" support/
-          python3 .github/scripts/signer-publish.py build-info --out support \
-            --profile "$FLAVOR" \
-            --version-code-file "app/build/outputs/app_versioning/${FLAVOR}Release/version_code.txt"
+
+      - name: Record release metadata
+        if: ${{ github.event_name == 'push' }}
+        uses: connectbot/actions/android-signer@c608c81d077db64ce7685d17ff8adddd52c13c23
+        with:
+          command: build-info
+          out: support
+          profile: ${{ matrix.flavor }}
+          version-code-file: app/build/outputs/app_versioning/${{ matrix.flavor }}Release/version_code.txt
 
       - name: Store immutable release support files
         if: ${{ github.event_name == 'push' }}

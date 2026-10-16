@@ -1,26 +1,22 @@
 {
   "builder": {
-    "repository": "connectbot/test-signer-1",
-    "repository_id": 1421097317,
-    "workflow": ".github/workflows/ci-build.yml",
+    "helpers": {},
     "refs": [
       "refs/heads/main"
     ],
+    "repository": "connectbot/test-signer-1",
+    "repository_id": 1421097317,
     "sha256": [
-      "7df53e3984aa3f98df8995edb098ffa6fb02f96e6803aee0d401893044d3311f"
+      "269453adf5f0c9e1b2af80e62a55de9211ce5d6cc8f9c8dd73695e8f83160304"
     ],
-    "helpers": {
-      ".github/scripts/signer-publish.py": [
-        "4705e367a1ee8b62deb8341894845448aff1044a059c3d7f87cfff1f0aa097bc"
-      ]
-    }
+    "workflow": ".github/workflows/ci-build.yml"
   },
   "callers": {
     ".github/workflows/ci.yml": [
       "5dde62f9dbb7e87d115927679330d64f24b2563fec46cbd1f14f79fad0277ce5"
     ]
   },
-  "policy_hash": "24c5a291c7795357ae909822eba4c77b207d6e9738555d20e39117a86e6ca57c",
+  "policy_hash": "69b2f4bf3044496fab03f5666c5a306906684f519b14a87e923fea01721f3c3a",
   "profiles": {
     "google": {
       "hybrid_min_sdk": null,
@@ -57,7 +53,7 @@
   ],
   "repository": "connectbot/test-signer-1",
   "repository_id": 1421097317,
-  "revision": 6,
+  "revision": 7,
   "signer_revision": "04da8cb4879532562c2657b35985d181aab517f4",
   "version": 2,
   "visibility": "public"

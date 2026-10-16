@@ -46,15 +46,16 @@ jobs:
           distribution: zulu
           java-version: '25'
       - name: Verify both signing transactions
+        uses: connectbot/actions/android-signer@c608c81d077db64ce7685d17ff8adddd52c13c23
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_RUN: ${{ inputs.source_run }}
-          SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
-        run: |
-          python3 .github/scripts/signer-publish.py prepare \
-            --source-run "$SOURCE_RUN" --source-attempt "$SOURCE_ATTEMPT" \
-            --policy .github/signer-policy.json \
-            --out "$RUNNER_TEMP/verified-release" --tools "$RUNNER_TEMP/reference-tools"
+        with:
+          command: prepare
+          source-run: ${{ inputs.source_run }}
+          source-attempt: ${{ inputs.source_attempt }}
+          policy: .github/signer-policy.json
+          out: ${{ runner.temp }}/verified-release
+          tools: ${{ runner.temp }}/reference-tools
       - name: Attest final signed files
         id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -70,12 +71,13 @@ jobs:
           create-storage-record: false
       - name: Prepare verified draft
         id: seal
+        uses: connectbot/actions/android-signer@c608c81d077db64ce7685d17ff8adddd52c13c23
         env:
           GH_TOKEN: ${{ github.token }}
-          BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
-        run: |
-          python3 .github/scripts/signer-publish.py seal \
-            --out "$RUNNER_TEMP/verified-release" --bundle "$BUNDLE"
+        with:
+          command: seal
+          out: ${{ runner.temp }}/verified-release
+          bundle: ${{ steps.provenance.outputs.bundle-path }}
       - name: Preserve immutable publishing handoff
         id: handoff
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

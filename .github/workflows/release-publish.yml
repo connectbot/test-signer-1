@@ -33,13 +33,14 @@ jobs:
           path: ${{ runner.temp }}/publish
           merge-multiple: true
       - name: Verify and publish GitHub release
+        uses: connectbot/actions/android-signer@c608c81d077db64ce7685d17ff8adddd52c13c23
         env:
           GH_TOKEN: ${{ github.token }}
-          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-        run: |
-          python3 .github/scripts/signer-publish.py github \
-            --out "$RUNNER_TEMP/publish" --manifest-sha256 "$MANIFEST_SHA256" \
-            --report "$RUNNER_TEMP/github-publication.json"
+        with:
+          command: github
+          out: ${{ runner.temp }}/publish
+          manifest-sha256: ${{ inputs.manifest_sha256 }}
+          report: ${{ runner.temp }}/github-publication.json
       - name: Preserve publication result
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -70,12 +71,13 @@ jobs:
           path: ${{ runner.temp }}/publish
           merge-multiple: true
       - name: Verify publishing handoff before Google authentication
+        uses: connectbot/actions/android-signer@c608c81d077db64ce7685d17ff8adddd52c13c23
         env:
           GH_TOKEN: ${{ github.token }}
-          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-        run: |
-          python3 .github/scripts/signer-publish.py verify \
-            --out "$RUNNER_TEMP/publish" --manifest-sha256 "$MANIFEST_SHA256"
+        with:
+          command: verify
+          out: ${{ runner.temp }}/publish
+          manifest-sha256: ${{ inputs.manifest_sha256 }}
       - name: Obtain short-lived Play credentials
         id: google
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -88,14 +90,15 @@ jobs:
           create_credentials_file: false
           export_environment_variables: false
       - name: Publish verified Google bundle to alpha
+        uses: connectbot/actions/android-signer@c608c81d077db64ce7685d17ff8adddd52c13c23
         env:
           GH_TOKEN: ${{ github.token }}
           GOOGLE_PLAY_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
-          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
-        run: |
-          python3 .github/scripts/signer-publish.py play \
-            --out "$RUNNER_TEMP/publish" --manifest-sha256 "$MANIFEST_SHA256" \
-            --report "$RUNNER_TEMP/play-publication.json"
+        with:
+          command: play
+          out: ${{ runner.temp }}/publish
+          manifest-sha256: ${{ inputs.manifest_sha256 }}
+          report: ${{ runner.temp }}/play-publication.json
       - name: Preserve publication result
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

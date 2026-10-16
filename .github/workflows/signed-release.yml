@@ -41,7 +41,7 @@ jobs:
           gh api --hostname github.com --method POST "repos/$GH_REPO/actions/workflows/signed-release.yml/dispatches" --input "$RUNNER_TEMP/finalize.json"
   finalize:
     if: ${{ vars.ANDROID_SIGNER_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-    uses: ./.github/workflows/release-attest.yml
+    uses: connectbot/actions/.github/workflows/android-finalize.yml@android-signer-v1
     permissions:
       contents: write
       actions: read
@@ -52,7 +52,7 @@ jobs:
       source_attempt: ${{ fromJSON(inputs.source_attempt) }}
   publish:
     needs: finalize
-    uses: ./.github/workflows/release-publish.yml
+    uses: connectbot/actions/.github/workflows/android-publish.yml@android-signer-v1
     permissions:
       contents: write
       actions: read

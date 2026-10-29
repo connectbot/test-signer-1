@@ -185,7 +185,7 @@ jobs:
 
       - name: Record release metadata
         if: ${{ github.event_name == 'push' }}
-        uses: kruton/bathysign/bathysign@v0.2.1
+        uses: kruton/bathysign/bathysign@v0.2.2
         with:
           command: build-info
           out: support
@@ -207,7 +207,7 @@ jobs:
     strategy:
       matrix:
         flavor: [oss, google]
-    uses: kruton/bathysign/.github/workflows/bathysign-attest.yml@v0.2.1
+    uses: kruton/bathysign/.github/workflows/bathysign-attest.yml@v0.2.2
     permissions:
       contents: read
       actions: read
